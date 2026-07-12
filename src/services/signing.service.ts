@@ -29,40 +29,29 @@ export class SigningService {
       throw new Error('No se pudo extraer llave privada o certificado del .p12');
     }
 
-    this.validateCertificate(certBag);
-
-    const now = new Date();
-    const notAfter = certBag.validity.notAfter;
-    if (notAfter < now) {
-      throw new BadRequestException(
-        `El certificado digital expiró el ${notAfter.toISOString().split('T')[0]}. Debe renovarlo.`,
-      );
-    }
-    if (certBag.validity.notBefore > now) {
-      throw new BadRequestException('El certificado digital aún no es válido');
-    }
+    await this.validateCertificate(certBag);
 
     const privateKeyPem = forge.pki.privateKeyToPem(keyBag);
     const certDer = forge.asn1.toDer(forge.pki.certificateToAsn1(certBag)).getBytes();
     const certificateBase64 = forge.util.encode64(certDer);
+    const documentDigest = crypto.createHash('sha256').update(xmlContent, 'utf8').digest('base64');
 
-    const certPem = forge.pki.certificateToPem(certBag);
-
-    const documentC14n = xmlContent;
-
-    const digestValue = crypto.createHash('sha256').update(documentC14n, 'utf8').digest('base64');
+    const issuerStr = certBag.issuer?.attributes
+      ?.map((a: any) => `${a.shortName || a.name}=${a.value}`)
+      .join(', ') || '';
+    const serialNumber = certBag.serialNumber || '';
 
     const signedInfoXml = [
       '<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#">',
       '<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>',
       '<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>',
-      '<ds:Reference URI="#factura-electronica">',
+      '<ds:Reference URI="">',
       '<ds:Transforms>',
       '<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>',
       '<ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>',
       '</ds:Transforms>',
       '<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>',
-      `<ds:DigestValue>${digestValue}</ds:DigestValue>`,
+      `<ds:DigestValue>${documentDigest}</ds:DigestValue>`,
       '</ds:Reference>',
       '</ds:SignedInfo>',
     ].join('');
@@ -71,19 +60,16 @@ export class SigningService {
     signer.update(signedInfoXml, 'utf8');
     const signatureValue = signer.sign(privateKeyPem, 'base64');
 
-    const issuerInfo = certBag.issuer;
-    const serialNumber = certBag.serialNumber;
-
     const signatureXml = [
-      '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="factura-electronica">',
+      '<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="xmldsig-signature">',
       signedInfoXml,
       `<ds:SignatureValue>${signatureValue}</ds:SignatureValue>`,
       '<ds:KeyInfo>',
       '<ds:X509Data>',
-      `<ds:X509IssuerSerial>`,
-      `<ds:X509IssuerName>${forge.pki.distinguishedNameToAsn1(issuerInfo as any)}</ds:X509IssuerName>`,
+      '<ds:X509IssuerSerial>',
+      `<ds:X509IssuerName>${issuerStr}</ds:X509IssuerName>`,
       `<ds:X509SerialNumber>${serialNumber}</ds:X509SerialNumber>`,
-      `</ds:X509IssuerSerial>`,
+      '</ds:X509IssuerSerial>',
       `<ds:X509Certificate>${certificateBase64}</ds:X509Certificate>`,
       '</ds:X509Data>',
       '</ds:KeyInfo>',
@@ -91,36 +77,31 @@ export class SigningService {
     ].join('');
 
     const signedXml = this.insertSignatureIntoXml(xmlContent, signatureXml);
-
     return { signedXml, certificateBase64 };
   }
 
-  private validateCertificate(cert: forge.pki.Certificate): void {
+  private async validateCertificate(cert: forge.pki.Certificate): Promise<void> {
     const now = new Date();
     if (cert.validity.notAfter < now) {
-      this.logger.warn(`Certificado expiró el ${cert.validity.notAfter.toISOString().split('T')[0]}`);
+      throw new BadRequestException(
+        `El certificado digital expiró el ${cert.validity.notAfter.toISOString().split('T')[0]}. Debe renovarlo.`,
+      );
     }
     if (cert.validity.notBefore > now) {
-      this.logger.warn('Certificado aún no es válido (fecha futura)');
+      throw new BadRequestException('El certificado digital aún no es válido');
     }
     const daysLeft = Math.floor((cert.validity.notAfter.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    if (daysLeft >= 0 && daysLeft <= 30) {
-      this.logger.warn(`Certificado expira en ${daysLeft} días (${cert.validity.notAfter.toISOString().split('T')[0]})`);
-    }
-    this.logger.log(`Certificado válido: emisor=${cert.issuer?.attributes?.find((a: any) => a.name === 'commonName')?.value || 'N/A'}, expira=${cert.validity.notAfter.toISOString().split('T')[0]}, días restantes=${daysLeft}`);
+    this.logger.log(`Certificado válido: expira en ${daysLeft} días (${cert.validity.notAfter.toISOString().split('T')[0]})`);
   }
 
   private insertSignatureIntoXml(xml: string, signatureXml: string): string {
     const marker = '</ext:UBLExtensions>';
     const firstExtEnd = xml.indexOf(marker);
     if (firstExtEnd === -1) {
-      throw new Error('No se encontró el marcador UBLExtensions en el XML');
+      return xml.replace('</Invoice>', signatureXml + '\n</Invoice>');
     }
     const before = xml.substring(0, firstExtEnd);
     const after = xml.substring(firstExtEnd);
-
-    const signatureBlock = signatureXml + '\n    ';
-
-    return before + signatureBlock + after;
+    return before + signatureXml + '\n    ' + after;
   }
 }
