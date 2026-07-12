@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: facturacion-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: api_facturacion
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: facturacion-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: facturacion-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE: api_facturacion
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NODE_ENV: production
+    volumes:
+      - storage_data:/app/storage
+      - xsd_data:/app/xsd
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "npm run migration:run && node dist/main"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: facturacion-worker
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_DATABASE: api_facturacion
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      NODE_ENV: production
+    volumes:
+      - storage_data:/app/storage
+      - xsd_data:/app/xsd
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["node", "dist/modules/queue/queue.worker"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+  xsd_data:
