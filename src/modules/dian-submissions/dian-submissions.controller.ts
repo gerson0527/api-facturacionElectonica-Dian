@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { DianSubmissionsService } from './dian-submissions.service';
 
 @ApiTags('DIAN Submissions')
-@Controller('v1/submissions')
+@Controller('submissions')
 export class DianSubmissionsController {
   constructor(private readonly service: DianSubmissionsService) {}
 

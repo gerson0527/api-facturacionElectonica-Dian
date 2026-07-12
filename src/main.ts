@@ -8,7 +8,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
-  app.setGlobalPrefix('v1', { exclude: ['docs', 'health'] });
+  app.setGlobalPrefix('v1', { exclude: ['/docs', '/health'] });
 
   app.use(helmet({
     contentSecurityPolicy: false,

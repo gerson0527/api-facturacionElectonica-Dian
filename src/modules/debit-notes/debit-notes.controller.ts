@@ -19,7 +19,7 @@ export class CreateDebitNoteDto {
 }
 
 @ApiTags('Debit Notes')
-@Controller('v1/invoices/:invoiceId/debit-notes')
+@Controller('invoices/:invoiceId/debit-notes')
 export class DebitNotesController {
   constructor(private readonly service: DebitNotesService) {}
 

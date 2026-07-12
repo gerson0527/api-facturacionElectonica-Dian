@@ -32,7 +32,7 @@ export class CreateTenantDto {
 }
 
 @ApiTags('Tenants')
-@Controller('v1/tenants')
+@Controller('tenants')
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 

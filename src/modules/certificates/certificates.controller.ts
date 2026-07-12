@@ -22,7 +22,7 @@ interface UploadedBufferFile {
 }
 
 @ApiTags('Certificates')
-@Controller('v1/tenants/:tenantId/certificates')
+@Controller('tenants/:tenantId/certificates')
 export class CertificatesController {
   constructor(private readonly service: CertificatesService) {}
 

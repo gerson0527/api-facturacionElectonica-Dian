@@ -39,7 +39,7 @@ export class CreateCustomerDto {
 }
 
 @ApiTags('Customers')
-@Controller('v1/tenants/:tenantId/customers')
+@Controller('tenants/:tenantId/customers')
 export class CustomersController {
   constructor(private readonly service: CustomersService) {}
 

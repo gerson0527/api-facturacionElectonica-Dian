@@ -23,7 +23,7 @@ export class CreateNumberingRangeDto {
 }
 
 @ApiTags('Numbering Ranges')
-@Controller('v1/tenants/:tenantId/numbering-ranges')
+@Controller('tenants/:tenantId/numbering-ranges')
 export class NumberingRangesController {
   constructor(private readonly service: NumberingRangesService) {}
 

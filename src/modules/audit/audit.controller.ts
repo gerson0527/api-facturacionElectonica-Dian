@@ -23,7 +23,7 @@ export class AuditQueryDto {
 }
 
 @ApiTags('Audit')
-@Controller('v1/audit')
+@Controller('audit')
 export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 

@@ -36,7 +36,7 @@ export class CreateUserDto {
 }
 
 @ApiTags('Auth')
-@Controller('v1/auth')
+@Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 

@@ -27,7 +27,7 @@ import { CertificatesService } from '../certificates/certificates.service';
 import { NumberingRangesService } from '../numbering-ranges/numbering-ranges.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as archiver from 'archiver';
+import archiver from 'archiver';
 import { createWriteStream } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -159,11 +159,6 @@ export class InvoicesService {
 
     // Reserve consecutive number
     const { number } = await this.numberingRangesService.reserveNextNumber(tenantId, input.prefix);
-
-    // Calculate totals
-    const subtotal = input.lines.reduce((sum, l) => sum + (l.lineExtensionAmount || (l.quantity * l.unitPrice)), 0);
-    const totalTax = input.taxTotals.reduce((sum, t) => sum + t.taxAmount, 0);
-    const totalAmount = subtotal + totalTax;
 
     // Generate CUFE
     const issueDate = new Date(input.issueDate);

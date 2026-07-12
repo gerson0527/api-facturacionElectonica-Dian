@@ -19,7 +19,7 @@ import { SoftwareCredentialsService } from '../software-credentials/software-cre
 import { CertificatesService } from '../certificates/certificates.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as archiver from 'archiver';
+import archiver from 'archiver';
 import { createWriteStream } from 'fs';
 import { create } from 'xmlbuilder2';
 

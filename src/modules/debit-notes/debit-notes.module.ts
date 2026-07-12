@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bullmq';
 import { DebitNotesController } from './debit-notes.controller';
 import { DebitNotesService } from './debit-notes.service';
 import { DebitNote } from '@/database/entities/debit-note.entity';
@@ -24,6 +25,7 @@ import { NumberingRangesService } from '../numbering-ranges/numbering-ranges.ser
       DebitNote, Invoice, NumberingRange, DianSoftwareCredential,
       DigitalCertificate, DianSubmission, Tenant,
     ]),
+    BullModule.registerQueue({ name: 'dian-submission' }, { name: 'dian-status' }),
   ],
   controllers: [DebitNotesController],
   providers: [

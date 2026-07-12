@@ -109,7 +109,7 @@ export class CreateInvoiceDto {
 }
 
 @ApiTags('Invoices')
-@Controller('v1/invoices')
+@Controller('invoices')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class InvoicesController {
   constructor(private readonly invoicesService: InvoicesService) {}

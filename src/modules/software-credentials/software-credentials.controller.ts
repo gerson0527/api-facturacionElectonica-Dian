@@ -16,7 +16,7 @@ export class CreateSoftwareCredentialDto {
 }
 
 @ApiTags('Software Credentials')
-@Controller('v1/tenants/:tenantId/software-credentials')
+@Controller('tenants/:tenantId/software-credentials')
 export class SoftwareCredentialsController {
   constructor(private readonly service: SoftwareCredentialsService) {}
 

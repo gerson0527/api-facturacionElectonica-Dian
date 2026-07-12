@@ -23,7 +23,7 @@ export class CreateCreditNoteDto {
 }
 
 @ApiTags('Credit Notes')
-@Controller('v1/invoices/:invoiceId/credit-notes')
+@Controller('invoices/:invoiceId/credit-notes')
 export class CreditNotesController {
   constructor(private readonly service: CreditNotesService) {}
 
