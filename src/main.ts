@@ -8,20 +8,50 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
-  app.setGlobalPrefix('v1', { exclude: ['/docs', '/health'] });
+  app.setGlobalPrefix('v1', { exclude: ['/docs', '/health', '/health/live', '/health/ready'] });
 
-  app.use(helmet({
-    contentSecurityPolicy: false,
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  }));
+  const corsOrigins = process.env.CORS_ALLOWED_ORIGINS
+    ? process.env.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+    : ['http://localhost:3000'];
 
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN || '*',
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  const corsOptions: Record<string, unknown> = {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type,Authorization,X-Tenant-Id',
+    allowedHeaders: 'Content-Type,Authorization,X-Tenant-Id,Idempotency-Key',
     credentials: true,
-  });
+  };
 
+  if (corsOrigins.includes('*')) {
+    if (isProduction) {
+      logger.error('CORS_ALLOWED_ORIGINS contains wildcard in production; refusing to start');
+      process.exit(1);
+    }
+    corsOptions.origin = '*';
+    corsOptions.credentials = false;
+  } else {
+    corsOptions.origin = corsOrigins;
+  }
+
+  app.enableCors(corsOptions as any);
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
+      hidePoweredBy: true,
+      frameguard: { action: 'deny' },
+      noSniff: true,
+      referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    }),
+  );
+
+  if (process.env.NODE_ENV === 'production') {
+    app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  }
+
+  const bodySizeLimit = process.env.BODY_SIZE_LIMIT || '10mb';
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -31,23 +61,29 @@ async function bootstrap() {
     }),
   );
 
-  const config = new DocumentBuilder()
-    .setTitle('API Facturación Electrónica DIAN')
-    .setDescription('API SaaS multiempresa para facturación electrónica DIAN - Anexo Técnico 1.9')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addApiKey({ type: 'apiKey', name: 'X-Tenant-Id', in: 'header' }, 'X-Tenant-Id')
-    .build();
+  const swaggerEnabled = process.env.SWAGGER_ENABLED !== 'false' && !isProduction;
+  if (swaggerEnabled) {
+    const config = new DocumentBuilder()
+      .setTitle('API Facturación Electrónica DIAN')
+      .setDescription('API SaaS multiempresa para facturación electrónica DIAN - Anexo Técnico 1.9')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .addApiKey({ type: 'apiKey', name: 'X-Tenant-Id', in: 'header' }, 'X-Tenant-Id')
+      .build();
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document);
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, document);
+  }
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
   logger.log(`API running on http://localhost:${port}`);
-  logger.log(`Swagger docs at http://localhost:${port}/docs`);
+  if (swaggerEnabled) {
+    logger.log(`Swagger docs at http://localhost:${port}/docs`);
+  }
   logger.log(`Health check at http://localhost:${port}/health`);
   logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.log(`CORS origins: ${corsOrigins.join(', ')}`);
 }
 
 bootstrap().catch((err) => {

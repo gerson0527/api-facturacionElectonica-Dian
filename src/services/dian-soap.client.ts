@@ -111,15 +111,19 @@ export class DianSoapClient {
   }
 
   private async makeSoapRequest(url: string, operation: string, body: string): Promise<string> {
-    const env = this.configService.get<string>('NODE_ENV') || 'development';
-    const agent = new https.Agent({ rejectUnauthorized: env !== 'production' });
+    const agent = new https.Agent({ rejectUnauthorized: true });
+    const connectionTimeout = this.configService.get<number>('DIAN_TIMEOUT_CONNECTION') || 15000;
+    const readTimeout = this.configService.get<number>('DIAN_TIMEOUT_READ') || 60000;
     const response = await axios.post(url, body, {
       headers: {
         'Content-Type': 'application/soap+xml;charset=UTF-8;action="' + this.getSoapAction(operation) + '"',
         'SOAPAction': this.getSoapAction(operation),
       },
       httpsAgent: agent,
-      timeout: 60000,
+      timeout: readTimeout,
+      transitional: {
+        clarifyTimeoutError: true,
+      },
     });
     return response.data;
   }

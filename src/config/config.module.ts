@@ -7,10 +7,10 @@ import { envValidationSchema } from './env.validation';
     NestConfigModule.forRoot({
       isGlobal: true,
       validationSchema: envValidationSchema,
-      validationOptions: { abortEarly: true },
+      validationOptions: { abortEarly: true, allowUnknown: true },
       envFilePath: '.env',
     }),
   ],
   exports: [NestConfigModule],
 })
-export class ConfigModule {}
+export class AppConfigModule {}

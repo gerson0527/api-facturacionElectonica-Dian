@@ -1,8 +1,11 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { redisConfig } from './config/redis.config';
+import { AppConfigModule } from './config/config.module';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -34,15 +37,29 @@ import { SigningService } from './services/signing.service';
 import { IdempotencyService } from './services/idempotency.service';
 import { CryptoService } from './services/crypto.service';
 import { ValidationsService } from './services/validations.service';
+import { EnvSecretsProvider } from './services/secrets/env-secrets-provider';
+import { SECRETS_PROVIDER_TOKEN } from './services/secrets/secrets-provider.interface';
 
 import * as entities from './database/entities';
 
+function getSslConfig(config: ConfigService) {
+  const nodeEnv = config.get<string>('NODE_ENV');
+  if (nodeEnv !== 'production' && nodeEnv !== 'habilitacion') {
+    return false;
+  }
+  const caCert = config.get<string>('DB_CA_CERT');
+  if (caCert) {
+    return {
+      rejectUnauthorized: true,
+      ca: caCert,
+    };
+  }
+  return { rejectUnauthorized: true };
+}
+
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: '.env',
-    }),
+    AppConfigModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -54,10 +71,22 @@ import * as entities from './database/entities';
         password: config.get<string>('DB_PASSWORD'),
         database: config.get<string>('DB_DATABASE'),
         entities: Object.values(entities),
-        synchronize: config.get<string>('NODE_ENV') !== 'production',
+        synchronize: config.get<string>('NODE_ENV') === 'development',
         logging: config.get<string>('NODE_ENV') === 'development',
-        ssl: config.get<string>('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
+        ssl: getSslConfig(config),
         maxQueryExecutionTime: 1000,
+      }),
+    }),
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [
+          {
+            ttl: (config.get<number>('THROTTLER_TTL') || 60) * 1000,
+            limit: config.get<number>('THROTTLER_LIMIT') || 30,
+          },
+        ],
       }),
     }),
     BullModule.forRootAsync({
@@ -102,6 +131,8 @@ import * as entities from './database/entities';
     CryptoService,
     ValidationsService,
     AuditService,
+    EnvSecretsProvider,
+    { provide: SECRETS_PROVIDER_TOKEN, useClass: EnvSecretsProvider },
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,
@@ -109,6 +140,10 @@ import * as entities from './database/entities';
     {
       provide: APP_FILTER,
       useClass: AllExceptionsFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
   ],
 })
