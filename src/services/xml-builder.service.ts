@@ -63,6 +63,32 @@ export interface InvoiceXmlData {
   }>;
 }
 
+const PAYMENT_FORM_MAP: Record<string, string> = {
+  '1': '1',
+  '2': '2',
+  '3': '3',
+  '4': '4',
+  '5': '5',
+};
+
+const DOC_TYPE_MAP: Record<string, string> = {
+  '11': '11',
+  '12': '12',
+  '13': '13',
+  '31': '31',
+};
+
+const TAX_NAME_MAP: Record<string, string> = {
+  '01': 'IVA',
+  '02': 'INC',
+  '03': 'ICA',
+  '04': 'ICUI',
+  '05': 'ReteIVA',
+  '06': 'ReteFuente',
+  '07': 'ReteICA',
+  '08': 'INPO',
+};
+
 @Injectable()
 export class XmlBuilderService {
   private readonly logger = new Logger(XmlBuilderService.name);
@@ -78,13 +104,12 @@ export class XmlBuilderService {
         'xmlns:ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
         'xmlns:sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
         'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
+        'xsi:schemaLocation': 'urn:oasis:names:specification:ubl:schema:xsd:Invoice-2 http://docs.oasis-open.org/ubl/os-UBL-2.1/xsd/maindoc/UBL-Invoice-2.1.xsd',
       });
 
-    // UBL extensions for DIAN
     const extensions = doc.ele('ext:UBLExtensions');
     this.buildDianExtensions(extensions, data);
 
-    // Standard UBL fields
     doc.ele('cbc:UBLVersionID').txt('UBL 2.1').up();
     doc.ele('cbc:CustomizationID').txt('10').up();
     doc.ele('cbc:ProfileID').txt('DIAN 1.0').up();
@@ -96,31 +121,28 @@ export class XmlBuilderService {
     if (data.dueDate) {
       doc.ele('cbc:DueDate').txt(data.dueDate).up();
     }
-    doc.ele('cbc:InvoiceTypeCode', { listID: data.invoiceType, listAgencyID: '6', listName: 'Tipo Factura' }).txt(data.invoiceType).up();
-    doc.ele('cbc:Note').txt(`Código CUFE: ${data.cufe}`).up();
-    doc.ele('cbc:DocumentCurrencyCode', { listID: 'ISO 4217 Alpha', listAgencyID: '6' }).txt(data.currencyCode || 'COP').up();
+    doc.ele('cbc:InvoiceTypeCode', {
+      listID: '0101',
+      listAgencyID: '6',
+      listName: 'Tipo Factura',
+      listURI: 'https://facturaelectronica.dian.gov.co/catalogo/tipofactura',
+    }).txt(data.invoiceType).up();
+    doc.ele('cbc:Note', { languageLocaleID: 'es-CO' }).txt(`Código CUFE: ${data.cufe}`).up();
+    doc.ele('cbc:DocumentCurrencyCode', {
+      listID: 'ISO 4217 Alpha',
+      listAgencyID: '6',
+      listName: 'COP',
+    }).txt(data.currencyCode || 'COP').up();
     doc.ele('cbc:LineCountNumeric').txt(String(data.lines.length)).up();
 
-    // AccountingSupplierParty
     this.buildAccountingSupplierParty(doc, data.issuer);
-
-    // AccountingCustomerParty
     this.buildAccountingCustomerParty(doc, data.customer);
-
-    // PaymentMeans
     this.buildPaymentMeans(doc, data);
-
-    // TaxTotal
     this.buildTaxTotals(doc, data);
-
-    // LegalMonetaryTotal
     this.buildLegalMonetaryTotal(doc, data);
-
-    // InvoiceLines
     this.buildInvoiceLines(doc, data);
 
-    const xml = doc.end({ prettyPrint: true, headless: false });
-    return xml;
+    return doc.end({ prettyPrint: true, headless: false });
   }
 
   private buildDianExtensions(parent: XMLBuilder, data: InvoiceXmlData): void {
@@ -130,114 +152,206 @@ export class XmlBuilderService {
     const ext2 = parent.ele('ext:UBLExtension')
       .ele('ext:ExtensionContent');
     ext2.ele('ds:Signature', {
-      xmlns: 'http://www.w3.org/2000/09/xmldsig#',
+      'xmlns:ds': 'http://www.w3.org/2000/09/xmldsig#',
       Id: 'factura-electronica',
     });
   }
 
   private buildInvoiceControl(parent: XMLBuilder, data: InvoiceXmlData): void {
+    const prefix = data.number.split(/\d/)[0];
+    const authNumber = data.number;
+
     parent.ele('sts:InvoiceControl')
-      .ele('sts:InvoiceAuthorization').txt(data.number.substring(0, data.number.lastIndexOf(' ')) + ' ' + data.number.split(' ').pop()).up()
+      .ele('sts:InvoiceAuthorization').txt(authNumber).up()
       .ele('sts:AuthorizationPeriod')
       .ele('cbc:StartDate').txt('2020-01-01').up()
       .ele('cbc:EndDate').txt('2099-12-31').up()
       .up()
       .ele('sts:AuthorizedInvoices')
-      .ele('sts:Prefix').txt(data.number.split(' ')[0]).up()
+      .ele('sts:Prefix').txt(prefix || '').up()
       .ele('sts:From').txt('1').up()
       .ele('sts:To').txt('99999999').up()
       .up()
       .ele('sts:SoftwareID').txt(data.softwareId).up()
-      .ele('sts:SoftwareSecurityCode', { schemeID: data.softwareId, schemeName: 'software_sec' })
-      .txt(data.cufe).up()
-      .ele('sts:AuthorizationProviderID', { schemeID: '4', schemeName: '31' })
-      .txt(data.issuer.nit).up()
+      .ele('sts:SoftwareSecurityCode', {
+        schemeID: data.softwareId,
+        schemeName: 'software_sec',
+        schemeAgencyID: '195',
+        schemeURI: 'https://facturaelectronica.dian.gov.co/softwaresecurity',
+      }).txt(data.cufe).up()
+      .ele('sts:AuthorizationProviderID', {
+        schemeID: '4',
+        schemeName: '31',
+        schemeAgencyID: '195',
+      }).txt(data.issuer.nit).up()
       .ele('sts:QRCode').txt(data.qrCode).up();
   }
 
   private buildAccountingSupplierParty(parent: XMLBuilder, issuer: InvoiceXmlData['issuer']): void {
-    const party = parent.ele('cac:AccountingSupplierParty')
-      .ele('cbc:AdditionalAccountID', { schemeID: '1', schemeName: 'Tipo de Identificación' })
-      .txt('31').up()
+    const schemeId = '31';
+    parent.ele('cac:AccountingSupplierParty')
+      .ele('cbc:AdditionalAccountID', {
+        schemeID: '1',
+        schemeName: 'Tipo de Identificación',
+        schemeAgencyID: '195',
+      }).txt(schemeId).up()
       .ele('cac:Party')
       .ele('cac:PartyIdentification')
-      .ele('cbc:ID', { schemeID: '31', schemeName: 'NIT' })
-      .txt(issuer.nit).up().up()
+      .ele('cbc:ID', {
+        schemeID: schemeId,
+        schemeName: 'NIT',
+        schemeAgencyID: '195',
+      }).txt(issuer.nit).up().up()
       .ele('cac:PartyName')
       .ele('cbc:Name').txt(issuer.name).up().up()
       .ele('cac:PhysicalLocation')
       .ele('cac:Address')
-      .ele('cbc:Department').txt('N/A').up()
-      .ele('cbc:CityName').txt('N/A').up()
-      .ele('cbc:CountrySubentity').txt('N/A').up()
+      .ele('cbc:ID').txt(issuer.municipalityCode || '11001').up()
+      .ele('cbc:CityName').txt('Bogotá D.C.').up()
+      .ele('cbc:CountrySubentity').txt('Bogotá D.C.').up()
+      .ele('cbc:CountrySubentityCode').txt(issuer.municipalityCode?.substring(0, 2) || '11').up()
+      .ele('cbc:Department').txt('Cundinamarca').up()
+      .ele('cbc:PostalZone').txt('110111').up()
+      .ele('cac:AddressLine')
+      .ele('cbc:Line').txt(issuer.address || 'N/A').up().up()
       .ele('cac:Country')
-      .ele('cbc:IdentificationCode', { listID: 'ISO 3166-1', listAgencyID: '6' }).txt('CO').up().up()
+      .ele('cbc:IdentificationCode', {
+        listID: 'ISO 3166-1',
+        listAgencyID: '6',
+        listName: 'Colombia',
+      }).txt('CO').up().up()
       .up().up()
       .ele('cac:PartyTaxScheme')
       .ele('cbc:RegistrationName').txt(issuer.name).up()
-      .ele('cbc:CompanyID', { schemeID: '31', schemeName: 'NIT' }).txt(issuer.nit).up()
+      .ele('cbc:CompanyID', {
+        schemeID: schemeId,
+        schemeName: 'NIT',
+        schemeAgencyID: '195',
+      }).txt(issuer.nit).up()
       .ele('cac:TaxScheme')
-      .ele('cbc:ID', { schemeID: '6', schemeName: 'IVA' }).txt('01').up().up()
+      .ele('cbc:ID', {
+        schemeID: '6',
+        schemeName: 'IVA',
+        schemeAgencyID: '195',
+      }).txt('01').up().up()
       .up()
       .ele('cac:PartyLegalEntity')
       .ele('cbc:RegistrationName').txt(issuer.name).up()
-      .ele('cbc:CompanyID', { schemeID: '31', schemeName: 'NIT' }).txt(issuer.nit).up();
+      .ele('cbc:CompanyID', {
+        schemeID: schemeId,
+        schemeName: 'NIT',
+        schemeAgencyID: '195',
+      }).txt(issuer.nit).up()
+      .ele('cbc:CompanyLegalFormCode', {
+        listID: '195',
+        listAgencyID: '195',
+        listName: 'Tipo de Sociedad',
+      }).txt('01').up();
   }
 
   private buildAccountingCustomerParty(parent: XMLBuilder, customer: InvoiceXmlData['customer']): void {
-    const docTypeMap: Record<string, string> = { '31': '31', '13': '13', '11': '11' };
-    const schemeId = docTypeMap[customer.documentType] || '13';
-    const party = parent.ele('cac:AccountingCustomerParty')
-      .ele('cbc:AdditionalAccountID', { schemeID: '1', schemeName: 'Tipo de Identificación' })
-      .txt(schemeId).up()
+    const schemeId = DOC_TYPE_MAP[customer.documentType] || '13';
+    parent.ele('cac:AccountingCustomerParty')
+      .ele('cbc:AdditionalAccountID', {
+        schemeID: '1',
+        schemeName: 'Tipo de Identificación',
+        schemeAgencyID: '195',
+      }).txt(schemeId).up()
       .ele('cac:Party')
       .ele('cac:PartyIdentification')
-      .ele('cbc:ID', { schemeID: schemeId })
-      .txt(customer.documentNumber).up().up()
+      .ele('cbc:ID', {
+        schemeID: schemeId,
+        schemeName: 'Documento de Identificación',
+        schemeAgencyID: '195',
+      }).txt(customer.documentNumber).up().up()
       .ele('cac:PartyName')
       .ele('cbc:Name').txt(customer.name).up().up()
       .ele('cac:PhysicalLocation')
       .ele('cac:Address')
-      .ele('cbc:Department').txt('N/A').up()
-      .ele('cbc:CityName').txt('N/A').up()
-      .ele('cbc:CountrySubentity').txt('N/A').up()
+      .ele('cbc:ID').txt(customer.municipalityCode || '11001').up()
+      .ele('cbc:CityName').txt('Bogotá D.C.').up()
+      .ele('cbc:CountrySubentity').txt('Bogotá D.C.').up()
+      .ele('cbc:CountrySubentityCode').txt(customer.municipalityCode?.substring(0, 2) || '11').up()
+      .ele('cbc:Department').txt('Cundinamarca').up()
+      .ele('cac:AddressLine')
+      .ele('cbc:Line').txt(customer.address || 'N/A').up().up()
       .ele('cac:Country')
-      .ele('cbc:IdentificationCode', { listID: 'ISO 3166-1', listAgencyID: '6' }).txt('CO').up().up()
+      .ele('cbc:IdentificationCode', {
+        listID: 'ISO 3166-1',
+        listAgencyID: '6',
+        listName: 'Colombia',
+      }).txt('CO').up().up()
       .up().up()
       .ele('cac:PartyTaxScheme')
       .ele('cbc:RegistrationName').txt(customer.name).up()
-      .ele('cbc:CompanyID', { schemeID: schemeId }).txt(customer.documentNumber).up()
+      .ele('cbc:CompanyID', {
+        schemeID: schemeId,
+        schemeName: 'Documento de Identificación',
+        schemeAgencyID: '195',
+      }).txt(customer.documentNumber).up()
       .ele('cac:TaxScheme')
-      .ele('cbc:ID', { schemeID: '6', schemeName: 'IVA' }).txt('01').up().up()
+      .ele('cbc:ID', {
+        schemeID: '6',
+        schemeName: 'IVA',
+        schemeAgencyID: '195',
+      }).txt('01').up().up()
       .up()
       .ele('cac:PartyLegalEntity')
       .ele('cbc:RegistrationName').txt(customer.name).up()
-      .ele('cbc:CompanyID', { schemeID: schemeId }).txt(customer.documentNumber).up();
+      .ele('cbc:CompanyID', {
+        schemeID: schemeId,
+        schemeName: 'Documento de Identificación',
+        schemeAgencyID: '195',
+      }).txt(customer.documentNumber).up()
+      .ele('cbc:CompanyLegalFormCode', {
+        listID: '195',
+        listAgencyID: '195',
+        listName: 'Tipo de Persona',
+      }).txt(customer.documentType === '31' ? '02' : '01').up();
   }
 
   private buildPaymentMeans(parent: XMLBuilder, data: InvoiceXmlData): void {
-    const payment = parent.ele('cac:PaymentMeans')
-      .ele('cbc:PaymentMeansCode', { listID: data.paymentFormCode })
-      .txt(data.paymentFormCode).up()
+    parent.ele('cac:PaymentMeans')
+      .ele('cbc:ID').txt('1').up()
+      .ele('cbc:PaymentMeansCode', {
+        listID: 'DIAN-29',
+        listAgencyID: '195',
+        listName: 'Forma de Pago',
+        listURI: 'https://facturaelectronica.dian.gov.co/catalogo/formaPago',
+      }).txt(PAYMENT_FORM_MAP[data.paymentFormCode] || '1').up()
       .ele('cbc:PaymentDueDate').txt(data.dueDate || data.issueDate).up()
       .ele('cbc:PaymentID').txt(data.number).up();
   }
 
   private buildTaxTotals(parent: XMLBuilder, data: InvoiceXmlData): void {
     for (const tax of data.taxTotals) {
-      const taxAmount = parent.ele('cac:TaxTotal')
-        .ele('cbc:TaxAmount', { currencyID: data.currencyCode || 'COP' })
-        .txt(tax.taxAmount.toFixed(2)).up()
+      const currency = data.currencyCode || 'COP';
+      const taxName = TAX_NAME_MAP[tax.taxId] || 'IVA';
+      parent.ele('cac:TaxTotal')
+        .ele('cbc:TaxAmount', {
+          currencyID: currency,
+        }).txt(tax.taxAmount.toFixed(2)).up()
         .ele('cac:TaxSubtotal')
-        .ele('cbc:TaxableAmount', { currencyID: data.currencyCode || 'COP' })
-        .txt(tax.taxableAmount.toFixed(2)).up()
-        .ele('cbc:TaxAmount', { currencyID: data.currencyCode || 'COP' })
-        .txt(tax.taxAmount.toFixed(2)).up()
+        .ele('cbc:TaxableAmount', {
+          currencyID: currency,
+        }).txt(tax.taxableAmount.toFixed(2)).up()
+        .ele('cbc:TaxAmount', {
+          currencyID: currency,
+        }).txt(tax.taxAmount.toFixed(2)).up()
         .ele('cac:TaxCategory')
+        .ele('cbc:ID', {
+          schemeID: '6',
+          schemeName: taxName,
+          schemeAgencyID: '195',
+        }).txt(tax.taxId).up()
         .ele('cbc:Percent').txt(tax.taxPercent.toFixed(2)).up()
         .ele('cac:TaxScheme')
-        .ele('cbc:ID', { schemeID: '6', schemeName: tax.taxId === '01' ? 'IVA' : 'INC' })
-        .txt(tax.taxId).up();
+        .ele('cbc:ID', {
+          schemeID: '6',
+          schemeName: taxName,
+          schemeAgencyID: '195',
+        }).txt(tax.taxId).up()
+        .ele('cbc:Name').txt(taxName).up();
     }
   }
 
@@ -254,33 +368,54 @@ export class XmlBuilderService {
       .txt('0.00').up()
       .ele('cbc:ChargeTotalAmount', { currencyID: currency })
       .txt('0.00').up()
+      .ele('cbc:PrepaidAmount', { currencyID: currency })
+      .txt('0.00').up()
       .ele('cbc:PayableAmount', { currencyID: currency })
       .txt(data.totalAmount.toFixed(2)).up();
   }
 
   private buildInvoiceLines(parent: XMLBuilder, data: InvoiceXmlData): void {
     for (const line of data.lines) {
-      const invLine = parent.ele('cac:InvoiceLine')
+      const currency = data.currencyCode || 'COP';
+      const taxName = TAX_NAME_MAP[line.taxCode] || 'IVA';
+      parent.ele('cac:InvoiceLine')
         .ele('cbc:ID').txt(String(line.lineNumber)).up()
-        .ele('cbc:InvoicedQuantity', { unitCode: line.unitCode, unitCodeListID: 'UN/ECE 20' })
-        .txt(String(line.quantity)).up()
-        .ele('cbc:LineExtensionAmount', { currencyID: data.currencyCode || 'COP' })
+        .ele('cbc:InvoicedQuantity', {
+          unitCode: line.unitCode,
+          unitCodeListID: 'UN/ECE 20',
+          unitCodeListAgencyID: '6',
+        }).txt(String(line.quantity)).up()
+        .ele('cbc:LineExtensionAmount', { currencyID: currency })
         .txt(line.lineExtensionAmount.toFixed(2)).up()
         .ele('cac:Item')
         .ele('cbc:Description').txt(line.description).up()
         .ele('cac:StandardItemIdentification')
-        .ele('cbc:ID', { schemeID: '001', schemeName: 'Estándar' }).txt('1').up()
+        .ele('cbc:ID', {
+          schemeID: '001',
+          schemeName: 'Identificador del Producto',
+          schemeAgencyID: '195',
+        }).txt('1').up()
         .up()
+        .ele('cac:ItemTaxInformation')
+        .ele('cbc:ID').txt(taxName).up()
+        .ele('cbc:Percent').txt(line.taxPercent.toFixed(2)).up()
         .ele('cac:TaxScheme')
-        .ele('cbc:ID', { schemeID: '6', schemeName: line.taxCode === '01' ? 'IVA' : 'INC' })
-        .txt(line.taxCode).up()
+        .ele('cbc:ID', {
+          schemeID: '6',
+          schemeName: taxName,
+          schemeAgencyID: '195',
+        }).txt(line.taxCode).up()
+        .ele('cbc:Name').txt(taxName).up()
         .up()
         .up()
         .ele('cac:Price')
-        .ele('cbc:PriceAmount', { currencyID: data.currencyCode || 'COP' })
+        .ele('cbc:PriceAmount', { currencyID: currency })
         .txt(line.unitPrice.toFixed(2)).up()
-        .ele('cbc:BaseQuantity', { unitCode: line.unitCode })
-        .txt(String(line.quantity)).up();
+        .ele('cbc:BaseQuantity', {
+          unitCode: line.unitCode,
+          unitCodeListID: 'UN/ECE 20',
+          unitCodeListAgencyID: '6',
+        }).txt(String(line.quantity)).up();
     }
   }
 
@@ -294,7 +429,7 @@ export class XmlBuilderService {
       const valid = xmlDoc.validate(xsdDoc);
       if (!valid) {
         const errors = xmlDoc.validationErrors;
-        this.logger.warn(`XSD validation errors: ${errors.map((e: any) => e.message).join(', ')}`);
+        this.logger.error(`XSD validation errors: ${errors.map((e: any) => e.message).join('; ')}`);
       }
       return valid;
     } catch (err) {

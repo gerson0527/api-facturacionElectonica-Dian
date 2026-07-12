@@ -19,6 +19,7 @@ import { DianSoapClient } from '@/services/dian-soap.client';
 import { PdfQrService } from '@/services/pdf-qr.service';
 import { IdempotencyService } from '@/services/idempotency.service';
 import { CryptoService } from '@/services/crypto.service';
+import { ValidationsService } from '@/services/validations.service';
 import { SoftwareCredentialsService } from '../software-credentials/software-credentials.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { NumberingRangesService } from '../numbering-ranges/numbering-ranges.service';
@@ -34,7 +35,7 @@ import { NumberingRangesService } from '../numbering-ranges/numbering-ranges.ser
   controllers: [InvoicesController],
   providers: [
     InvoicesService, CufeService, XmlBuilderService, SigningService,
-    DianSoapClient, PdfQrService, IdempotencyService, CryptoService,
+    DianSoapClient, PdfQrService, IdempotencyService, CryptoService, ValidationsService,
     SoftwareCredentialsService, CertificatesService, NumberingRangesService,
   ],
   exports: [InvoicesService],

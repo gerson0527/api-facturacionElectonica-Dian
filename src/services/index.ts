@@ -6,3 +6,4 @@ export { PdfQrService } from './pdf-qr.service';
 export { CryptoService } from './crypto.service';
 export { IdempotencyService } from './idempotency.service';
 export { AuditService } from './audit.service';
+export { ValidationsService } from './validations.service';

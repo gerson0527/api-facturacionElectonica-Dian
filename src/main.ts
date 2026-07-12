@@ -2,20 +2,24 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
-import { AuditInterceptor } from './common/interceptors/audit.interceptor';
-import { AuditService } from './services/audit.service';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
-  app.setGlobalPrefix('v1', { exclude: ['docs'] });
+  app.setGlobalPrefix('v1', { exclude: ['docs', 'health'] });
+
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  }));
 
   app.enableCors({
-    origin: '*',
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: process.env.CORS_ORIGIN || '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type,Authorization,X-Tenant-Id',
+    credentials: true,
   });
 
   app.useGlobalPipes(
@@ -41,7 +45,9 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
   await app.listen(port);
   logger.log(`API running on http://localhost:${port}`);
-  logger.log(`Swagger docs available at http://localhost:${port}/docs`);
+  logger.log(`Swagger docs at http://localhost:${port}/docs`);
+  logger.log(`Health check at http://localhost:${port}/health`);
+  logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 
 bootstrap().catch((err) => {

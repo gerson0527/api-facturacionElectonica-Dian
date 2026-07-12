@@ -111,7 +111,8 @@ export class DianSoapClient {
   }
 
   private async makeSoapRequest(url: string, operation: string, body: string): Promise<string> {
-    const agent = new https.Agent({ rejectUnauthorized: false });
+    const env = this.configService.get<string>('NODE_ENV') || 'development';
+    const agent = new https.Agent({ rejectUnauthorized: env !== 'production' });
     const response = await axios.post(url, body, {
       headers: {
         'Content-Type': 'application/soap+xml;charset=UTF-8;action="' + this.getSoapAction(operation) + '"',

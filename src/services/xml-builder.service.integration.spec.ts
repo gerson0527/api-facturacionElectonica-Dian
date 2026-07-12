@@ -17,9 +17,10 @@ describe('XmlBuilderService - Integration', () => {
       valAdicional: '0.00',
       valTotal: '1190000.00',
       nitEmisor: '900123456',
-      tipoDocEmisor: '31',
+      dvEmisor: '0',
       tipoDocAdquirente: '13',
       numDocAdquirente: '123456789',
+      dvAdquirente: '',
       softwarePin: 'SE3F5G8H2K7M4N9P',
       ambiente: '1',
     });

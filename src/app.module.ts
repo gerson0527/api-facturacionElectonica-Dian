@@ -2,7 +2,6 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { dataSourceOptions } from './config/database.config';
 import { redisConfig } from './config/redis.config';
 
 import { AuthModule } from './modules/auth/auth.module';
@@ -17,16 +16,24 @@ import { DebitNotesModule } from './modules/debit-notes/debit-notes.module';
 import { DianSubmissionsModule } from './modules/dian-submissions/dian-submissions.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { QueueModule } from './modules/queue/queue.module';
+import { HealthModule } from './modules/health/health.module';
 import { DianSubmissionProcessor } from './modules/queue/dian-submission.processor';
 import { DianStatusProcessor } from './modules/queue/dian-status.processor';
 
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
+import { RequestLoggingMiddleware } from './common/middleware/request-logging.middleware';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { AuditService } from './services/audit.service';
 import { DianSoapClient } from './services/dian-soap.client';
 import { PdfQrService } from './services/pdf-qr.service';
+import { CufeService } from './services/cufe.service';
+import { XmlBuilderService } from './services/xml-builder.service';
+import { SigningService } from './services/signing.service';
+import { IdempotencyService } from './services/idempotency.service';
+import { CryptoService } from './services/crypto.service';
+import { ValidationsService } from './services/validations.service';
 
 import * as entities from './database/entities';
 
@@ -50,6 +57,7 @@ import * as entities from './database/entities';
         synchronize: config.get<string>('NODE_ENV') !== 'production',
         logging: config.get<string>('NODE_ENV') === 'development',
         ssl: config.get<string>('NODE_ENV') === 'production' ? { rejectUnauthorized: false } : false,
+        maxQueryExecutionTime: 1000,
       }),
     }),
     BullModule.forRootAsync({
@@ -57,12 +65,17 @@ import * as entities from './database/entities';
       inject: [ConfigService],
       useFactory: () => ({
         connection: redisConfig,
+        defaultJobOptions: {
+          removeOnComplete: { age: 86400, count: 100 },
+          removeOnFail: { age: 604800, count: 500 },
+        },
       }),
     }),
     BullModule.registerQueue(
       { name: 'dian-submission' },
       { name: 'dian-status' },
     ),
+    HealthModule,
     AuthModule,
     TenantsModule,
     SoftwareCredentialsModule,
@@ -80,9 +93,15 @@ import * as entities from './database/entities';
   providers: [
     DianSubmissionProcessor,
     DianStatusProcessor,
-    AuditService,
+    CufeService,
+    XmlBuilderService,
+    SigningService,
     DianSoapClient,
     PdfQrService,
+    IdempotencyService,
+    CryptoService,
+    ValidationsService,
+    AuditService,
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,
@@ -95,6 +114,8 @@ import * as entities from './database/entities';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(TenantMiddleware).forRoutes('*');
+    consumer
+      .apply(TenantMiddleware, RequestLoggingMiddleware)
+      .forRoutes('*');
   }
 }

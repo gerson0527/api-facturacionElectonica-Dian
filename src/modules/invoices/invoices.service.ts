@@ -21,12 +21,13 @@ import { SigningService } from '@/services/signing.service';
 import { DianSoapClient } from '@/services/dian-soap.client';
 import { PdfQrService } from '@/services/pdf-qr.service';
 import { IdempotencyService } from '@/services/idempotency.service';
+import { ValidationsService } from '@/services/validations.service';
 import { SoftwareCredentialsService } from '../software-credentials/software-credentials.service';
 import { CertificatesService } from '../certificates/certificates.service';
 import { NumberingRangesService } from '../numbering-ranges/numbering-ranges.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import archiver from 'archiver';
+import * as archiver from 'archiver';
 import { createWriteStream } from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -94,6 +95,7 @@ export class InvoicesService {
     private readonly softwareCredentialsService: SoftwareCredentialsService,
     private readonly certificatesService: CertificatesService,
     private readonly numberingRangesService: NumberingRangesService,
+    private readonly validationsService: ValidationsService,
   ) {
     this.storagePath = this.configService.get<string>('STORAGE_PATH') || './storage';
   }
@@ -130,6 +132,31 @@ export class InvoicesService {
       throw new NotFoundException('Certificado digital no encontrado');
     }
 
+    // Business validations
+    const subtotal = input.lines.reduce((sum, l) => sum + (l.lineExtensionAmount || (l.quantity * l.unitPrice)), 0);
+    const totalTax = input.taxTotals.reduce((sum, t) => sum + t.taxAmount, 0);
+    const totalAmount = subtotal + totalTax;
+
+    this.validationsService.validateInvoice({
+      lines: input.lines.map((l) => ({
+        lineExtensionAmount: l.lineExtensionAmount || (l.quantity * l.unitPrice),
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        taxCode: l.taxCode || '01',
+        taxPercent: l.taxPercent || 0,
+        taxAmount: l.taxAmount || 0,
+      })),
+      taxTotals: input.taxTotals,
+      subtotal,
+      totalTax,
+      totalAmount,
+      customerDocumentType: customer.documentType,
+      customerDocumentNumber: customer.documentNumber,
+      issueDate: input.issueDate,
+      paymentFormCode: input.paymentFormCode || '1',
+      prefix: input.prefix,
+    });
+
     // Reserve consecutive number
     const { number } = await this.numberingRangesService.reserveNextNumber(tenantId, input.prefix);
 
@@ -149,9 +176,10 @@ export class InvoicesService {
       valAdicional: '0.00',
       valTotal: totalAmount.toFixed(2),
       nitEmisor: tenant.nit,
-      tipoDocEmisor: '31',
+      dvEmisor: tenant.dv,
       tipoDocAdquirente: customer.documentType,
       numDocAdquirente: customer.documentNumber,
+      dvAdquirente: customer.dv || '',
       softwarePin,
       ambiente: tenant.environment === 'produccion' ? '2' : '1',
     };
@@ -282,10 +310,7 @@ export class InvoicesService {
 
     // Sign XML
     const { pfxBuffer, password } = await this.certificatesService.getDecryptedPfx(cert.id, tenantId);
-    const pfxTempPath = path.join(xmlDir, `temp_${uuidv4()}.p12`);
-    await fs.writeFile(pfxTempPath, pfxBuffer);
-    const { signedXml } = await this.signingService.signXml(xmlContent, pfxTempPath, password);
-    await fs.unlink(pfxTempPath);
+    const { signedXml } = await this.signingService.signXmlFromBuffer(xmlContent, pfxBuffer, password);
 
     // Save signed XML
     const signedXmlFileName = `signed_${number.replace(/\s/g, '_')}.xml`;
