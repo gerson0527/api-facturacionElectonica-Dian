@@ -7,6 +7,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { redisConfig } from './config/redis.config';
 import { AppConfigModule } from './config/config.module';
 
+import { TenantContextMiddleware } from './common/context/tenant-context.middleware';
 import { AuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { SoftwareCredentialsModule } from './modules/software-credentials/software-credentials.module';
@@ -150,7 +151,7 @@ function getSslConfig(config: ConfigService) {
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer
-      .apply(TenantMiddleware, RequestLoggingMiddleware)
+      .apply(TenantContextMiddleware, TenantMiddleware, RequestLoggingMiddleware)
       .forRoutes('*');
   }
 }
