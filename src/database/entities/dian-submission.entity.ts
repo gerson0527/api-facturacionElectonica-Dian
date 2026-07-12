@@ -17,6 +17,9 @@ export class DianSubmission extends TenantEntity {
   @Column({ type: 'varchar', length: 50, default: 'pending' })
   status: string;
 
+  @Column({ type: 'varchar', length: 100, nullable: true, name: 'track_id' })
+  trackId: string;
+
   @Column({ type: 'text', nullable: true, name: 'request_zip_path' })
   requestZipPath: string;
 

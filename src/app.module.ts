@@ -40,6 +40,8 @@ import { CryptoService } from './services/crypto.service';
 import { ValidationsService } from './services/validations.service';
 import { EnvSecretsProvider } from './services/secrets/env-secrets-provider';
 import { SECRETS_PROVIDER_TOKEN } from './services/secrets/secrets-provider.interface';
+import { DianOutboxService } from './services/dian-outbox.service';
+import { StorageService } from './services/storage.service';
 
 import * as entities from './database/entities';
 
@@ -132,6 +134,8 @@ function getSslConfig(config: ConfigService) {
     CryptoService,
     ValidationsService,
     AuditService,
+    DianOutboxService,
+    StorageService,
     EnvSecretsProvider,
     { provide: SECRETS_PROVIDER_TOKEN, useClass: EnvSecretsProvider },
     {
