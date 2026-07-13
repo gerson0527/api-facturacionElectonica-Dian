@@ -27,6 +27,7 @@ import { CatalogsModule } from "./modules/catalogs/catalogs.module";
 import { MailerModule } from "./modules/mailer/mailer.module";
 import { WebhooksModule } from "./modules/webhooks/webhooks.module";
 import { DlqModule } from "./modules/dlq/dlq.module";
+import { OnboardingModule } from "./modules/onboarding/onboarding.module";
 
 import { TenantMiddleware } from "./common/middleware/tenant.middleware";
 import { RequestLoggingMiddleware } from "./common/middleware/request-logging.middleware";
@@ -161,6 +162,7 @@ import { ScheduleModule } from "@nestjs/schedule";
     MailerModule,
     WebhooksModule,
     DlqModule,
+    OnboardingModule,
     TypeOrmModule.forFeature(Object.values(entities)),
   ],
   providers: [

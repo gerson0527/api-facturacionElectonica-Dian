@@ -79,12 +79,31 @@ export class DianSubmissionProcessor extends WorkerHost {
 
       const { pfxBuffer, password } = await this.certificatesService.getDecryptedPfx(cert[0].id, tenantId);
 
-      const response = await this.dianSoapClient.sendBillAsync(
-        fileName,
-        contentFileBase64,
-        pfxBuffer,
-        password
+      const creds = await this.submissionRepo.manager.query(
+        `SELECT dsc.test_set_id FROM dian_software_credentials dsc WHERE dsc.tenant_id = $1 LIMIT 1`,
+        [tenantId]
       );
+      const testSetId = creds.length > 0 ? creds[0].test_set_id : null;
+      const env = this.configService.get<string>("DIAN_ENVIRONMENT") || "habilitacion";
+
+      let response;
+      if (env === "habilitacion" && testSetId) {
+        response = await this.dianSoapClient.sendTestSetAsync(
+          fileName,
+          contentFileBase64,
+          testSetId,
+          pfxBuffer,
+          password
+        );
+      } else {
+        response = await this.dianSoapClient.sendBillAsync(
+          fileName,
+          contentFileBase64,
+          pfxBuffer,
+          password
+        );
+      }
+
       if (response.TrackId) {
         await this.submissionRepo.update(submissionId, {
           status: "submitted",

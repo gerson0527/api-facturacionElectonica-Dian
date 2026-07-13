@@ -67,6 +67,38 @@ export class DianSoapClient {
     return this.callSoap(url, "SendBillAsync", fullEnvelope);
   }
 
+  async sendTestSetAsync(
+    fileName: string,
+    contentFileBase64: string,
+    testSetId: string,
+    p12Buffer: Buffer,
+    password: string,
+  ): Promise<SendBillResponse> {
+    const url = this.getBaseUrl();
+    const soapBody = `<soap:Body>
+      <wcf:SendTestSetAsync>
+        <wcf:fileName>${fileName}</wcf:fileName>
+        <wcf:contentFile>${contentFileBase64}</wcf:contentFile>
+        <wcf:testSetId>${testSetId}</wcf:testSetId>
+      </wcf:SendTestSetAsync>
+    </soap:Body>`;
+
+    const { securityHeader, bodyWithId } = await this.signingService.buildWsseSecurityHeader(
+      soapBody,
+      p12Buffer,
+      password,
+    );
+
+    const fullEnvelope = `
+      <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
+                     xmlns:wcf="http://wcf.dian.colombia">
+        <soap:Header>${securityHeader}</soap:Header>
+        ${bodyWithId}
+      </soap:Envelope>`;
+
+    return this.callSoap(url, "SendTestSetAsync", fullEnvelope);
+  }
+
   async getStatus(trackId: string): Promise<GetStatusResponse> {
     const url = this.getBaseUrl();
     const soapBody = `
@@ -193,12 +225,12 @@ export class DianSoapClient {
       return match ? match[1].trim() : "";
     };
 
-    if (operation === "SendBillAsync") {
+    if (operation === "SendBillAsync" || operation === "SendTestSetAsync") {
       return {
-        TrackId: extractTag("TrackId"),
-        StatusCode: extractTag("StatusCode") || extractTag("a:StatusCode"),
+        TrackId: extractTag("TrackId") || extractTag("b:TrackId"),
+        StatusCode: extractTag("StatusCode") || extractTag("b:StatusCode"),
         StatusDescription:
-          extractTag("StatusDescription") || extractTag("a:StatusDescription"),
+          extractTag("StatusDescription") || extractTag("b:StatusDescription"),
       };
     }
     if (operation === "GetStatus") {
