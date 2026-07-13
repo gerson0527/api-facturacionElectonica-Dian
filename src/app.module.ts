@@ -4,7 +4,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { redisConfig } from './config/redis.config';
+
 import { AppConfigModule } from './config/config.module';
 
 import { TenantContextMiddleware } from './common/context/tenant-context.middleware';
@@ -95,8 +95,17 @@ function getSslConfig(config: ConfigService) {
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: () => ({
-        connection: redisConfig,
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.get<string>('REDIS_HOST') || 'localhost',
+          port: parseInt(config.get<string>('REDIS_PORT') || '6379', 10),
+          maxRetriesPerRequest: null,
+          connectTimeout: config.get<string>('NODE_ENV') === 'development' ? 3000 : 10000,
+          retryStrategy: (times: number) => {
+            if (config.get<string>('NODE_ENV') === 'development' && times > 1) return null;
+            return Math.min(times * 200, 5000);
+          },
+        },
         defaultJobOptions: {
           removeOnComplete: { age: 86400, count: 100 },
           removeOnFail: { age: 604800, count: 500 },
