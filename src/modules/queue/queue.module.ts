@@ -12,6 +12,7 @@ import { DianSubmission } from "@/database/entities/dian-submission.entity";
     BullModule.registerQueue(
       { name: "dian-submission" },
       { name: "dian-status" },
+      { name: "mailer" },
     ),
   ],
   providers: [OutboxRelayService],

@@ -5,6 +5,7 @@ export { DianSoapClient } from "./dian-soap.client";
 export { PdfQrService } from "./pdf-qr.service";
 export { CryptoService } from "./crypto.service";
 export { IdempotencyService } from "./idempotency.service";
+export { AttachedDocumentService } from "./attached-document.service";
 export { AuditService } from "./audit.service";
 export { ValidationsService } from "./validations.service";
 export { DianResponseService } from "./dian-response.service";

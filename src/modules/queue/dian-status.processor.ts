@@ -1,5 +1,5 @@
-import { Processor, WorkerHost, OnWorkerEvent } from "@nestjs/bullmq";
-import { Job } from "bullmq";
+import { Processor, WorkerHost, OnWorkerEvent, InjectQueue } from "@nestjs/bullmq";
+import { Queue, Job } from "bullmq";
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
@@ -28,6 +28,7 @@ export class DianStatusProcessor extends WorkerHost {
     private readonly configService: ConfigService,
     private readonly tenantRls: TenantRlsService,
     private readonly dianResponseService: DianResponseService,
+    @InjectQueue("mailer") private readonly mailerQueue: Queue,
   ) {
     super();
   }
@@ -87,6 +88,9 @@ export class DianStatusProcessor extends WorkerHost {
           await this.invoiceRepo.update(invoiceId, {
             dianResponsePath: responsePath,
           });
+
+          this.logger.log(`Queueing email delivery for invoice ${invoiceId}`);
+          await this.mailerQueue.add("send-email", { invoiceId, tenantId });
         }
       } else if (statusCode === "01" || statusCode === "1") {
         this.logger.log(`Invoice ${invoiceId} still pending, will retry`);

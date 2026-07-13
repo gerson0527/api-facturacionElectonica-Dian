@@ -24,6 +24,7 @@ import { HealthModule } from "./modules/health/health.module";
 import { DianSubmissionProcessor } from "./modules/queue/dian-submission.processor";
 import { DianStatusProcessor } from "./modules/queue/dian-status.processor";
 import { CatalogsModule } from "./modules/catalogs/catalogs.module";
+import { MailerModule } from "./modules/mailer/mailer.module";
 
 import { TenantMiddleware } from "./common/middleware/tenant.middleware";
 import { RequestLoggingMiddleware } from "./common/middleware/request-logging.middleware";
@@ -42,6 +43,7 @@ import { XmlBuilderService } from "./services/xml-builder.service";
 import { SigningService } from "./services/signing.service";
 import { IdempotencyService } from "./services/idempotency.service";
 import { CryptoService } from "./services/crypto.service";
+import { AttachedDocumentService } from "./services/attached-document.service";
 import { ValidationsService } from "./services/validations.service";
 import { EnvSecretsProvider } from "./services/secrets/env-secrets-provider";
 import { SECRETS_PROVIDER_TOKEN } from "./services/secrets/secrets-provider.interface";
@@ -137,6 +139,7 @@ import { ScheduleModule } from "@nestjs/schedule";
     BullModule.registerQueue(
       { name: "dian-submission" },
       { name: "dian-status" },
+      { name: "mailer" },
     ),
     HealthModule,
     AuthModule,
@@ -152,6 +155,7 @@ import { ScheduleModule } from "@nestjs/schedule";
     AuditModule,
     QueueModule,
     CatalogsModule,
+    MailerModule,
     TypeOrmModule.forFeature(Object.values(entities)),
   ],
   providers: [
@@ -164,6 +168,7 @@ import { ScheduleModule } from "@nestjs/schedule";
     PdfQrService,
     IdempotencyService,
     CryptoService,
+    AttachedDocumentService,
     ValidationsService,
     AuditService,
     DianOutboxService,
