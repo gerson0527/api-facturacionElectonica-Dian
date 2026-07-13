@@ -18,6 +18,7 @@ describe('XmlBuilderService - Integration', () => {
       valTotal: '1190000.00',
       nitEmisor: '900123456',
       dvEmisor: '0',
+      tipoDocEmisor: '31',
       tipoDocAdquirente: '13',
       numDocAdquirente: '123456789',
       dvAdquirente: '',
@@ -136,7 +137,7 @@ describe('XmlBuilderService - Integration', () => {
     expect(xml).toContain(data.lines[0].description);
   });
 
-  it('debe generar XML con firma XAdES-EPES (placeholder ds:Signature)', async () => {
+  it('debe generar XML con placeholder ds:Signature para firma XAdES-EPES', async () => {
     const xml = await xmlService.buildInvoiceXml(buildSampleData());
 
     expect(xml).toContain('ds:Signature');

@@ -22,6 +22,7 @@ describe('SoftwareCredentialsService', () => {
 
   const cryptoService = {
     encrypt: jest.fn(),
+    encryptWithIntegrity: jest.fn(),
     decrypt: jest.fn(),
   };
 
@@ -52,10 +53,12 @@ describe('SoftwareCredentialsService', () => {
 
   it('create cifra el pin y guarda la credencial', async () => {
     tenantRepo.findOne.mockResolvedValue({ id: 'tenant-1' });
-    cryptoService.encrypt.mockReturnValue({
+    cryptoService.encryptWithIntegrity.mockReturnValue({
       ciphertext: 'enc',
       iv: 'iv',
       authTag: 'tag',
+      keyVersion: 1,
+      integrityHash: 'abc',
     });
     credRepo.create.mockImplementation((payload: Partial<DianSoftwareCredential>) => payload);
     credRepo.save.mockImplementation(async (payload: Partial<DianSoftwareCredential>) => payload);
@@ -66,7 +69,7 @@ describe('SoftwareCredentialsService', () => {
       testSetId: 'ts-1',
     });
 
-    expect(cryptoService.encrypt).toHaveBeenCalledWith('12345');
+    expect(cryptoService.encryptWithIntegrity).toHaveBeenCalledWith('12345', 'software-pin:tenant-1:sw-1');
     expect(credRepo.create).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       softwareId: 'sw-1',
@@ -74,6 +77,8 @@ describe('SoftwareCredentialsService', () => {
         ciphertext: 'enc',
         iv: 'iv',
         authTag: 'tag',
+        keyVersion: 1,
+        integrityHash: 'abc',
       }),
       testSetId: 'ts-1',
       habilitacionStatus: 'pending',
@@ -93,14 +98,20 @@ describe('SoftwareCredentialsService', () => {
     cryptoService.decrypt.mockReturnValue('12345');
 
     const pin = await service.decryptPin({
+      tenantId: 'tenant-1',
+      softwareId: 'sw-1',
       softwarePinEncrypted: JSON.stringify({
         ciphertext: 'enc',
         iv: 'iv',
         authTag: 'tag',
+        keyVersion: 1,
       }),
     } as DianSoftwareCredential);
 
-    expect(cryptoService.decrypt).toHaveBeenCalledWith('enc', 'iv', 'tag');
+    expect(cryptoService.decrypt).toHaveBeenCalledWith(
+      { ciphertext: 'enc', iv: 'iv', authTag: 'tag', keyVersion: 1 },
+      'software-pin:tenant-1:sw-1',
+    );
     expect(pin).toBe('12345');
   });
 });

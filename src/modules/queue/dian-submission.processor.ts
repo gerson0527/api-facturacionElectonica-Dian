@@ -7,6 +7,7 @@ import { DianSubmission } from '@/database/entities/dian-submission.entity';
 import { Invoice } from '@/database/entities/invoice.entity';
 import { DianSoapClient } from '@/services/dian-soap.client';
 import { ConfigService } from '@nestjs/config';
+import { TenantRlsService } from '@/common/database/tenant-rls.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -24,12 +25,14 @@ export class DianSubmissionProcessor extends WorkerHost {
     private readonly dianStatusQueue: Queue,
     private readonly dianSoapClient: DianSoapClient,
     private readonly configService: ConfigService,
+    private readonly tenantRls: TenantRlsService,
   ) {
     super();
   }
 
   async process(job: Job<{ submissionId: string; invoiceId: string; tenantId: string; zipPath: string }>): Promise<any> {
-    const { submissionId, invoiceId, zipPath } = job.data;
+    const { submissionId, invoiceId, tenantId, zipPath } = job.data;
+    await this.tenantRls.setSessionTenant(tenantId);
     this.logger.log(`Processing DIAN submission ${submissionId} for invoice ${invoiceId} (attempt ${job.attemptsMade + 1})`);
 
     try {

@@ -11,6 +11,7 @@ export interface CufeInput {
   valTotal: string;
   nitEmisor: string;
   dvEmisor: string;
+  tipoDocEmisor: string;
   tipoDocAdquirente: string;
   numDocAdquirente: string;
   dvAdquirente: string;
@@ -31,6 +32,7 @@ export class CufeService {
       input.valTotal,
       input.nitEmisor,
       input.dvEmisor,
+      input.tipoDocEmisor,
       input.tipoDocAdquirente,
       input.numDocAdquirente,
       input.dvAdquirente,

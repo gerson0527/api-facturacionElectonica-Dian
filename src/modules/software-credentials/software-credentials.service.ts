@@ -24,7 +24,8 @@ export class SoftwareCredentialsService {
       throw new NotFoundException('Tenant no encontrado');
     }
 
-    const encrypted = this.cryptoService.encrypt(data.softwarePin);
+    const aad = `software-pin:${tenantId}:${data.softwareId}`;
+    const encrypted = this.cryptoService.encryptWithIntegrity(data.softwarePin, aad);
 
     const credential = this.credRepo.create({
       tenantId,
@@ -50,6 +51,7 @@ export class SoftwareCredentialsService {
 
   async decryptPin(credential: DianSoftwareCredential): Promise<string> {
     const parsed = JSON.parse(credential.softwarePinEncrypted);
-    return this.cryptoService.decrypt(parsed.ciphertext, parsed.iv, parsed.authTag);
+    const aad = `software-pin:${credential.tenantId}:${credential.softwareId}`;
+    return this.cryptoService.decrypt(parsed, aad);
   }
 }

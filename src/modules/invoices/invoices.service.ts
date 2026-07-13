@@ -172,6 +172,7 @@ export class InvoicesService {
       valTotal: totalAmount.toFixed(2),
       nitEmisor: tenant.nit,
       dvEmisor: tenant.dv,
+      tipoDocEmisor: tenant.documentType || '31',
       tipoDocAdquirente: customer.documentType,
       numDocAdquirente: customer.documentNumber,
       dvAdquirente: customer.dv || '',

@@ -10,6 +10,5 @@ export interface TenantContextData {
 export const tenantContext = new AsyncLocalStorage<TenantContextData>();
 
 export function getTenantContext(): TenantContextData | undefined {
-  const store = (tenantContext as any).get();
-  return store;
+  return tenantContext.getStore();
 }

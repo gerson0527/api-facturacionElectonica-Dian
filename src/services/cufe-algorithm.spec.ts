@@ -20,7 +20,7 @@ describe('CUFE Algorithm', () => {
     ambiente: '1',
   };
 
-  it('debe implementar CUFE con 14 campos concatenados sin separadores', () => {
+  it('debe implementar CUFE con 15 campos concatenados sin separadores (Anexo 1.9)', () => {
     const cufe = cufeService.generate(base);
     expect(cufe.length).toBe(96);
     expect(cufe).toMatch(/^[0-9A-F]{96}$/);

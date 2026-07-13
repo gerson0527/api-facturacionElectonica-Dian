@@ -8,6 +8,7 @@ import { Invoice } from '@/database/entities/invoice.entity';
 import { DianSoapClient } from '@/services/dian-soap.client';
 import { PdfQrService } from '@/services/pdf-qr.service';
 import { ConfigService } from '@nestjs/config';
+import { TenantRlsService } from '@/common/database/tenant-rls.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -24,12 +25,14 @@ export class DianStatusProcessor extends WorkerHost {
     private readonly dianSoapClient: DianSoapClient,
     private readonly pdfQrService: PdfQrService,
     private readonly configService: ConfigService,
+    private readonly tenantRls: TenantRlsService,
   ) {
     super();
   }
 
   async process(job: Job<{ trackId: string; submissionId: string; invoiceId: string; tenantId: string }>): Promise<any> {
-    const { trackId, submissionId, invoiceId } = job.data;
+    const { trackId, submissionId, invoiceId, tenantId } = job.data;
+    await this.tenantRls.setSessionTenant(tenantId);
     this.logger.log(`Checking DIAN status for trackId: ${trackId}`);
 
     try {

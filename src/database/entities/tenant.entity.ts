@@ -30,6 +30,9 @@ export class Tenant extends TenantEntity {
   @Column({ type: 'boolean', default: true })
   enabled: boolean;
 
+  @Column({ type: 'varchar', length: 2, default: '31' })
+  documentType: string;
+
   @Column({ type: 'varchar', length: 20, default: 'habilitacion' })
   environment: string;
 

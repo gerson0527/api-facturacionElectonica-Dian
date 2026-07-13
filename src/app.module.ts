@@ -29,6 +29,8 @@ import { RequestLoggingMiddleware } from './common/middleware/request-logging.mi
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { TenantRlsInterceptor } from './common/interceptors/tenant-rls.interceptor';
+import { TenantRlsService } from './common/database/tenant-rls.service';
 import { AuditService } from './services/audit.service';
 import { DianSoapClient } from './services/dian-soap.client';
 import { PdfQrService } from './services/pdf-qr.service';
@@ -153,6 +155,11 @@ function getSslConfig(config: ConfigService) {
     StorageService,
     EnvSecretsProvider,
     { provide: SECRETS_PROVIDER_TOKEN, useClass: EnvSecretsProvider },
+    TenantRlsService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TenantRlsInterceptor,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor,

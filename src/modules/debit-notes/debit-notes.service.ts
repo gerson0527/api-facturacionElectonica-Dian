@@ -14,6 +14,7 @@ import { Tenant } from '@/database/entities/tenant.entity';
 import { CufeService } from '@/services/cufe.service';
 import { SigningService } from '@/services/signing.service';
 import { DianSoapClient } from '@/services/dian-soap.client';
+import { XmlBuilderService, DebitNoteXmlData } from '@/services/xml-builder.service';
 import { NumberingRangesService } from '../numbering-ranges/numbering-ranges.service';
 import { SoftwareCredentialsService } from '../software-credentials/software-credentials.service';
 import { CertificatesService } from '../certificates/certificates.service';
@@ -21,7 +22,6 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import archiver from 'archiver';
 import { createWriteStream } from 'fs';
-import { create } from 'xmlbuilder2';
 
 @Injectable()
 export class DebitNotesService {
@@ -47,6 +47,7 @@ export class DebitNotesService {
     private readonly configService: ConfigService,
     private readonly cufeService: CufeService,
     private readonly signingService: SigningService,
+    private readonly xmlBuilderService: XmlBuilderService,
     private readonly dianSoapClient: DianSoapClient,
     private readonly numberingRangesService: NumberingRangesService,
     private readonly softwareCredentialsService: SoftwareCredentialsService,
@@ -82,6 +83,7 @@ export class DebitNotesService {
       valTotal: input.totalAmount.toFixed(2),
       nitEmisor: tenant.nit,
       dvEmisor: tenant.dv,
+      tipoDocEmisor: tenant.documentType || '31',
       tipoDocAdquirente: invoice.customerDocumentType,
       numDocAdquirente: invoice.customerDocument,
       dvAdquirente: '',
@@ -102,135 +104,63 @@ export class DebitNotesService {
     });
     const saved = await this.debitNoteRepo.save(debitNote);
 
-    const doc = create({ version: '1.0', encoding: 'UTF-8' })
-      .ele('DebitNote', {
-        xmlns: 'urn:oasis:names:specification:ubl:schema:xsd:DebitNote-2',
-        'xmlns:cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-        'xmlns:cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-        'xmlns:ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
-        'xmlns:sts': 'dian:gov:co:facturaelectronica:Structures-2-1',
-        'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
-      })
-      .ele('ext:UBLExtensions')
-      .ele('ext:UBLExtension')
-      .ele('ext:ExtensionContent')
-      .ele('sts:DianExtensions')
-      .ele('sts:SoftwareID').txt(softwareCreds.softwareId).up()
-      .ele('sts:SoftwareSecurityCode', {
-        schemeID: softwareCreds.softwareId,
-        schemeName: 'software_sec',
-        schemeAgencyID: '195',
-      }).txt(cufe).up()
-      .ele('sts:AuthorizationProviderID', {
-        schemeID: '4',
-        schemeName: '31',
-        schemeAgencyID: '195',
-      }).txt(tenant.nit).up()
-      .up()
-      .up()
-      .up()
-      .ele('ext:UBLExtension')
-      .ele('ext:ExtensionContent')
-      .ele('ds:Signature', {
-        'xmlns:ds': 'http://www.w3.org/2000/09/xmldsig#',
-        Id: 'nota-debito',
-      })
-      .up()
-      .up()
-      .up()
-      .up()
-      .ele('cbc:UBLVersionID').txt('UBL 2.1').up()
-      .ele('cbc:CustomizationID').txt('10').up()
-      .ele('cbc:ProfileID').txt('DIAN 1.0').up()
-      .ele('cbc:ProfileExecutionID').txt(tenant.environment === 'habilitacion' ? '1' : '2').up()
-      .ele('cbc:ID').txt(number).up()
-      .ele('cbc:UUID', { schemeID: '2', schemeName: 'CUFE-SHA384' }).txt(cufe).up()
-      .ele('cbc:IssueDate').txt(input.issueDate).up()
-      .ele('cbc:IssueTime').txt(issueDate.toISOString().split('T')[1]?.split('.')[0] || '00:00:00').up()
-      .ele('cbc:DebitNoteTypeCode', {
-        listID: input.reasonCode,
-        listAgencyID: '6',
-        listName: 'Tipo Nota Débito',
-      }).txt(input.reasonCode).up()
-      .ele('cbc:Note').txt(input.description || `Nota débito de la factura ${invoice.number}`).up()
-      .ele('cbc:DocumentCurrencyCode', {
-        listID: 'ISO 4217 Alpha',
-        listAgencyID: '6',
-      }).txt('COP').up()
-      .ele('cbc:LineCountNumeric').txt('1').up()
-      .ele('cac:DiscrepancyResponse')
-      .ele('cbc:ReferenceID').txt(invoice.number).up()
-      .ele('cbc:ResponseCode', {
-        listID: 'DIAN-ResponseCode',
-        listAgencyID: '195',
-      }).txt(input.reasonCode).up()
-      .ele('cbc:Description').txt(input.description || 'Ajuste débito').up()
-      .up()
-      .ele('cac:BillingReference')
-      .ele('cac:InvoiceDocumentReference')
-      .ele('cbc:ID').txt(invoice.number).up()
-      .ele('cbc:UUID', { schemeID: '2', schemeName: 'CUFE-SHA384' }).txt(invoice.cufe || '').up()
-      .ele('cbc:IssueDate').txt(invoice.issueDate.toISOString().split('T')[0]).up()
-      .up()
-      .up()
-      .ele('cac:AccountingSupplierParty')
-      .ele('cbc:AdditionalAccountID', { schemeID: '1', schemeAgencyID: '195' }).txt('31').up()
-      .ele('cac:Party')
-      .ele('cac:PartyIdentification')
-      .ele('cbc:ID', { schemeID: '31', schemeAgencyID: '195' }).txt(tenant.nit).up().up()
-      .ele('cac:PartyName')
-      .ele('cbc:Name').txt(tenant.name).up().up()
-      .ele('cac:PartyLegalEntity')
-      .ele('cbc:RegistrationName').txt(tenant.name).up()
-      .ele('cbc:CompanyID', { schemeID: '31', schemeAgencyID: '195' }).txt(tenant.nit).up()
-      .up()
-      .up()
-      .up()
-      .ele('cac:AccountingCustomerParty')
-      .ele('cbc:AdditionalAccountID', { schemeID: '1', schemeAgencyID: '195' }).txt(invoice.customerDocumentType).up()
-      .ele('cac:Party')
-      .ele('cac:PartyIdentification')
-      .ele('cbc:ID', { schemeID: invoice.customerDocumentType, schemeAgencyID: '195' }).txt(invoice.customerDocument).up().up()
-      .ele('cac:PartyName')
-      .ele('cbc:Name').txt(invoice.customerName).up().up()
-      .ele('cac:PartyLegalEntity')
-      .ele('cbc:RegistrationName').txt(invoice.customerName).up()
-      .ele('cbc:CompanyID', { schemeID: invoice.customerDocumentType, schemeAgencyID: '195' }).txt(invoice.customerDocument).up()
-      .up()
-      .up()
-      .up()
-      .ele('cac:TaxTotal')
-      .ele('cbc:TaxAmount', { currencyID: 'COP' }).txt('0.00').up()
-      .ele('cac:TaxSubtotal')
-      .ele('cbc:TaxableAmount', { currencyID: 'COP' }).txt('0.00').up()
-      .ele('cbc:TaxAmount', { currencyID: 'COP' }).txt('0.00').up()
-      .ele('cac:TaxCategory')
-      .ele('cbc:ID', { schemeID: '6', schemeAgencyID: '195' }).txt('01').up()
-      .ele('cbc:Percent').txt('0.00').up()
-      .ele('cac:TaxScheme')
-      .ele('cbc:ID', { schemeID: '6', schemeAgencyID: '195' }).txt('01').up()
-      .up()
-      .up()
-      .up()
-      .up()
-      .ele('cac:LegalMonetaryTotal')
-      .ele('cbc:LineExtensionAmount', { currencyID: 'COP' }).txt(input.totalAmount.toFixed(2)).up()
-      .ele('cbc:TaxExclusiveAmount', { currencyID: 'COP' }).txt(input.totalAmount.toFixed(2)).up()
-      .ele('cbc:TaxInclusiveAmount', { currencyID: 'COP' }).txt(input.totalAmount.toFixed(2)).up()
-      .ele('cbc:PayableAmount', { currencyID: 'COP' }).txt(input.totalAmount.toFixed(2)).up()
-      .up()
-      .ele('cac:DebitNoteLine')
-      .ele('cbc:ID').txt('1').up()
-      .ele('cbc:DebitedQuantity', { unitCode: '94', unitCodeListID: 'UN/ECE 20' }).txt('1').up()
-      .ele('cbc:LineExtensionAmount', { currencyID: 'COP' }).txt(input.totalAmount.toFixed(2)).up()
-      .ele('cac:Item')
-      .ele('cbc:Description').txt(input.description || 'Nota débito').up()
-      .up()
-      .ele('cac:Price')
-      .ele('cbc:PriceAmount', { currencyID: 'COP' }).txt(input.totalAmount.toFixed(2)).up()
-      .up()
-      .up();
-    const xmlContent = doc.end({ prettyPrint: true });
+    const qrCode = `https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${cufe}`;
+    const issueTime = issueDate.toISOString().split('T')[1]?.split('.')[0] || '00:00:00';
+
+    const debitNoteData: DebitNoteXmlData = {
+      number,
+      issueDate: input.issueDate,
+      issueTime,
+      currencyCode: 'COP',
+      cufe,
+      qrCode,
+      softwareId: softwareCreds.softwareId,
+      softwarePin,
+      environment: tenant.environment,
+      testSetId: softwareCreds.testSetId || '',
+      issuer: {
+        nit: tenant.nit,
+        dv: tenant.dv,
+        name: tenant.name,
+        address: tenant.address || '',
+        phone: tenant.phone || '',
+        email: tenant.email || '',
+        municipalityCode: '11001',
+        fiscalResponsibilities: ['O-99'],
+      },
+      customer: {
+        documentType: invoice.customerDocumentType,
+        documentNumber: invoice.customerDocument,
+        name: invoice.customerName,
+        address: '',
+        phone: '',
+        email: '',
+        municipalityCode: '11001',
+        fiscalResponsibilities: ['O-99'],
+      },
+      taxTotals: [],
+      subtotal: input.totalAmount,
+      totalTax: 0,
+      totalAmount: input.totalAmount,
+      lines: [{
+        lineNumber: 1,
+        description: input.description || 'Nota débito',
+        quantity: 1,
+        unitCode: '94',
+        unitPrice: input.totalAmount,
+        lineExtensionAmount: input.totalAmount,
+        taxCode: '01',
+        taxPercent: 0,
+        taxAmount: 0,
+      }],
+      noteType: input.reasonCode,
+      invoiceId: invoice.cufe || invoice.number,
+      invoiceNumber: invoice.number,
+      reasonCode: input.reasonCode,
+      description: input.description,
+    };
+
+    const xmlContent = await this.xmlBuilderService.buildDebitNoteXml(debitNoteData);
 
     const xmlDir = path.join(this.storagePath, 'xml', tenantId);
     await fs.mkdir(xmlDir, { recursive: true });
@@ -258,7 +188,7 @@ export class DebitNotesService {
         output.on('close', () => resolve());
         archive.on('error', reject);
         archive.pipe(output);
-        archive.append(signedXml, { name: 'fa.xml' });
+        archive.append(signedXml, { name: 'nd.xml' });
         archive.finalize();
       });
 

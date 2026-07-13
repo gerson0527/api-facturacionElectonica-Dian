@@ -36,6 +36,7 @@ describe('CertificatesService', () => {
 
   const cryptoService = {
     encrypt: jest.fn(),
+    encryptWithIntegrity: jest.fn(),
     decrypt: jest.fn(),
   };
 
@@ -71,8 +72,9 @@ describe('CertificatesService', () => {
 
   it('upload guarda archivo cifrado y persiste certificado', async () => {
     tenantRepo.findOne.mockResolvedValue({ id: 'tenant-1' });
+    cryptoService.encryptWithIntegrity
+      .mockReturnValueOnce({ ciphertext: 'pfx-enc', iv: 'iv1', authTag: 'tag1', keyVersion: 1, integrityHash: 'h1' });
     cryptoService.encrypt
-      .mockReturnValueOnce({ ciphertext: 'pfx-enc', iv: 'iv1', authTag: 'tag1' })
       .mockReturnValueOnce({ ciphertext: 'pass-enc', iv: 'iv2', authTag: 'tag2' })
       .mockReturnValueOnce({ ciphertext: 'pin-enc', iv: 'iv3', authTag: 'tag3' });
 
@@ -92,9 +94,13 @@ describe('CertificatesService', () => {
 
     expect(uuidv4).toHaveBeenCalled();
     expect(fs.mkdir).toHaveBeenCalledWith(certDir, { recursive: true });
+    expect(cryptoService.encryptWithIntegrity)
+      .toHaveBeenCalledWith(Buffer.from('contenido-pfx').toString('base64'), 'pfx:tenant-1:Certificado Principal');
+    expect(cryptoService.encrypt)
+      .toHaveBeenNthCalledWith(1, 'clave-pfx', 'pfx-password:tenant-1:Certificado Principal');
     expect(fs.writeFile).toHaveBeenCalledWith(
       expectedPfxPath,
-      JSON.stringify({ ciphertext: 'pfx-enc', iv: 'iv1', authTag: 'tag1' }),
+      JSON.stringify({ ciphertext: 'pfx-enc', iv: 'iv1', authTag: 'tag1', keyVersion: 1, integrityHash: 'h1' }),
     );
 
     expect(certRepo.create).toHaveBeenCalledWith({
@@ -120,6 +126,7 @@ describe('CertificatesService', () => {
     certRepo.findOne.mockResolvedValue({
       id: 'cert-1',
       tenantId: 'tenant-1',
+      alias: 'Certificado Principal',
       encryptedPfxPath: 'c:\\tmp\\cert.enc',
       encryptedPasswordRef: JSON.stringify({ ciphertext: 'pass-enc', iv: 'iv2', authTag: 'tag2' }),
       encryptedPinRef: JSON.stringify({ ciphertext: 'pin-enc', iv: 'iv3', authTag: 'tag3' }),
@@ -137,9 +144,21 @@ describe('CertificatesService', () => {
     const result = await service.getDecryptedPfx('cert-1', 'tenant-1');
 
     expect(fs.readFile).toHaveBeenCalledWith('c:\\tmp\\cert.enc', 'utf-8');
-    expect(cryptoService.decrypt).toHaveBeenNthCalledWith(1, 'pfx-enc', 'iv1', 'tag1');
-    expect(cryptoService.decrypt).toHaveBeenNthCalledWith(2, 'pass-enc', 'iv2', 'tag2');
-    expect(cryptoService.decrypt).toHaveBeenNthCalledWith(3, 'pin-enc', 'iv3', 'tag3');
+    expect(cryptoService.decrypt).toHaveBeenNthCalledWith(
+      1,
+      { ciphertext: 'pfx-enc', iv: 'iv1', authTag: 'tag1' },
+      'pfx:tenant-1:Certificado Principal',
+    );
+    expect(cryptoService.decrypt).toHaveBeenNthCalledWith(
+      2,
+      { ciphertext: 'pass-enc', iv: 'iv2', authTag: 'tag2' },
+      'pfx-password:tenant-1:Certificado Principal',
+    );
+    expect(cryptoService.decrypt).toHaveBeenNthCalledWith(
+      3,
+      { ciphertext: 'pin-enc', iv: 'iv3', authTag: 'tag3' },
+      'pfx-pin:tenant-1:Certificado Principal',
+    );
     expect(result.password).toBe('clave-pfx');
     expect(result.pin).toBe('1234');
     expect(result.pfxBuffer.toString('utf-8')).toBe('contenido-pfx');

@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { CryptoService } from './crypto.service';
 
+const TEST_KEY = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+
 describe('CryptoService - Integration', () => {
   let service: CryptoService;
 
@@ -13,9 +15,8 @@ describe('CryptoService - Integration', () => {
           provide: ConfigService,
           useValue: {
             get: (key: string) => {
-              if (key === 'ENCRYPTION_KEY') {
-                return 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
-              }
+              if (key === 'ENCRYPTION_KEY') return TEST_KEY;
+              if (key === 'ENCRYPTION_KEY_VERSION') return 1;
               return undefined;
             },
           },
@@ -62,7 +63,11 @@ describe('CryptoService - Integration', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: () => 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+            get: (k: string) => {
+              if (k === 'ENCRYPTION_KEY') return 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
+              if (k === 'ENCRYPTION_KEY_VERSION') return 1;
+              return undefined;
+            },
           },
         },
       ],
@@ -74,5 +79,48 @@ describe('CryptoService - Integration', () => {
     expect(() => {
       service2.decrypt(encrypted.ciphertext, encrypted.iv, encrypted.authTag);
     }).toThrow();
+  });
+
+  it('debe cargar historial de claves desde ENCRYPTION_KEY_HISTORY', async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CryptoService,
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string) => {
+              if (key === 'ENCRYPTION_KEY') return TEST_KEY;
+              if (key === 'ENCRYPTION_KEY_VERSION') return 2;
+              if (key === 'ENCRYPTION_KEY_HISTORY') {
+                return JSON.stringify({ '1': 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789' });
+              }
+              return undefined;
+            },
+          },
+        },
+      ],
+    }).compile();
+
+    const svc2 = module.get<CryptoService>(CryptoService);
+    expect(svc2.getCurrentKeyVersion()).toBe(2);
+
+    const encrypted = svc2.encrypt('data with version 2 key');
+    expect(encrypted.keyVersion).toBe(2);
+    const decrypted = svc2.decrypt(encrypted);
+    expect(decrypted).toBe('data with version 2 key');
+  });
+
+  it('debe usar AAD en encryptObject/decryptToObject', () => {
+    const obj = { secret: 'value' };
+    const aad = 'my-context:1';
+    const encrypted = service.encryptObject(obj, aad);
+    const decrypted = service.decryptToObject<typeof obj>(encrypted, aad);
+    expect(decrypted.secret).toBe('value');
+  });
+
+  it('debe rechazar AAD incorrecto en decryptToObject', () => {
+    const obj = { secret: 'value' };
+    const encrypted = service.encryptObject(obj, 'correct-aad');
+    expect(() => service.decryptToObject(encrypted, 'wrong-aad')).toThrow();
   });
 });

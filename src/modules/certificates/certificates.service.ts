@@ -40,8 +40,10 @@ export class CertificatesService {
     const certDir = path.join(this.storagePath, 'certificates', tenantId);
     await fs.mkdir(certDir, { recursive: true });
 
-    const encryptedPfx = this.cryptoService.encrypt(pfxBuffer.toString('base64'));
-    const encryptedPassword = this.cryptoService.encrypt(pfxPassword);
+    const pfxAad = `pfx:${tenantId}:${alias}`;
+    const pwdAad = `pfx-password:${tenantId}:${alias}`;
+    const encryptedPfx = this.cryptoService.encryptWithIntegrity(pfxBuffer.toString('base64'), pfxAad);
+    const encryptedPassword = this.cryptoService.encrypt(pfxPassword, pwdAad);
 
     const pfxFileName = `${uuidv4()}.enc`;
     const pfxPath = path.join(certDir, pfxFileName);
@@ -49,7 +51,8 @@ export class CertificatesService {
 
     let encryptedPinRef = '';
     if (pin) {
-      const encryptedPin = this.cryptoService.encrypt(pin);
+      const pinAad = `pfx-pin:${tenantId}:${alias}`;
+      const encryptedPin = this.cryptoService.encrypt(pin, pinAad);
       encryptedPinRef = JSON.stringify(encryptedPin);
     }
 
@@ -76,16 +79,19 @@ export class CertificatesService {
 
     const encPfxRaw = await fs.readFile(cert.encryptedPfxPath, 'utf-8');
     const encPfx = JSON.parse(encPfxRaw);
-    const pfxBase64 = this.cryptoService.decrypt(encPfx.ciphertext, encPfx.iv, encPfx.authTag);
+    const pfxAad = `pfx:${cert.tenantId}:${cert.alias}`;
+    const pfxBase64 = this.cryptoService.decrypt(encPfx, pfxAad);
     const pfxBuffer = Buffer.from(pfxBase64, 'base64');
 
     const encPassword = JSON.parse(cert.encryptedPasswordRef);
-    const password = this.cryptoService.decrypt(encPassword.ciphertext, encPassword.iv, encPassword.authTag);
+    const pwdAad = `pfx-password:${cert.tenantId}:${cert.alias}`;
+    const password = this.cryptoService.decrypt(encPassword, pwdAad);
 
     let pin: string | undefined;
     if (cert.encryptedPinRef) {
       const encPin = JSON.parse(cert.encryptedPinRef);
-      pin = this.cryptoService.decrypt(encPin.ciphertext, encPin.iv, encPin.authTag);
+      const pinAad = `pfx-pin:${cert.tenantId}:${cert.alias}`;
+      pin = this.cryptoService.decrypt(encPin, pinAad);
     }
 
     return { pfxBuffer, password, pin };
