@@ -11,6 +11,8 @@ import { Repository } from "typeorm";
 import { DianSubmission } from "@/database/entities/dian-submission.entity";
 import { Invoice } from "@/database/entities/invoice.entity";
 import { DianSoapClient } from "@/services/dian-soap.client";
+import { DianDlq } from "@/database/entities/dian-dlq.entity";
+import { OutboxEvent } from "@/database/entities/outbox-event.entity";
 import { ConfigService } from "@nestjs/config";
 import { TenantRlsService } from "@/common/database/tenant-rls.service";
 import { CertificatesService } from "@/modules/certificates/certificates.service";
@@ -138,17 +140,39 @@ export class DianSubmissionProcessor extends WorkerHost {
     this.logger.error(`Job ${job.id} failed: ${err.message}`);
     // If maximum attempts are reached, it's a permanent failure (DLQ equivalent)
     if (job.attemptsMade >= (job.opts.attempts || 1)) {
+      let outboxPayload = null;
       if (job.data && job.data.eventId) {
         try {
-          const { OutboxEvent } = require("@/database/entities/outbox-event.entity");
-          await this.submissionRepo.manager.update(OutboxEvent, job.data.eventId, {
-            status: "failed",
-            error: err.message,
-          });
-          this.logger.log(`OutboxEvent ${job.data.eventId} marked as failed (DLQ)`);
+          const outboxEvent = await this.submissionRepo.manager.findOne(OutboxEvent, { where: { id: job.data.eventId } });
+          if (outboxEvent) {
+            outboxPayload = outboxEvent.payload;
+            await this.submissionRepo.manager.update(OutboxEvent, job.data.eventId, {
+              status: "failed",
+              error: err.message,
+            });
+            this.logger.log(`OutboxEvent ${job.data.eventId} marked as failed (DLQ)`);
+          }
         } catch (e: any) {
           this.logger.error(`Failed to update OutboxEvent for DLQ: ${e.message}`);
         }
+      }
+
+      // Record in DianDlq
+      try {
+        const submission = await this.submissionRepo.findOne({ where: { id: job.data.submissionId }, relations: ["invoice", "tenant"] });
+        if (submission) {
+          const dlq = this.submissionRepo.manager.create(DianDlq, {
+            invoice: submission.invoice,
+            tenant: submission.tenant,
+            payload: outboxPayload || {},
+            lastError: err.message,
+            status: "pending",
+          });
+          await this.submissionRepo.manager.save(dlq);
+          this.logger.log(`Invoice ${submission.invoice.id} moved to DLQ`);
+        }
+      } catch (e: any) {
+        this.logger.error(`Failed to save DLQ record: ${e.message}`);
       }
     }
   }
