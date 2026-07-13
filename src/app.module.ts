@@ -23,6 +23,7 @@ import { QueueModule } from "./modules/queue/queue.module";
 import { HealthModule } from "./modules/health/health.module";
 import { DianSubmissionProcessor } from "./modules/queue/dian-submission.processor";
 import { DianStatusProcessor } from "./modules/queue/dian-status.processor";
+import { CatalogsModule } from "./modules/catalogs/catalogs.module";
 
 import { TenantMiddleware } from "./common/middleware/tenant.middleware";
 import { RequestLoggingMiddleware } from "./common/middleware/request-logging.middleware";
@@ -149,6 +150,7 @@ import { ScheduleModule } from "@nestjs/schedule";
     DianSubmissionsModule,
     AuditModule,
     QueueModule,
+    CatalogsModule,
     TypeOrmModule.forFeature(Object.values(entities)),
   ],
   providers: [

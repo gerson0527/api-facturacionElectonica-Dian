@@ -39,6 +39,30 @@ import { createWriteStream } from "fs";
 import { v4 as uuidv4 } from "uuid";
 import { Money } from "@/domain/value-objects/money.vo";
 
+export const INVOICE_STATES = {
+  DRAFT: "draft",
+  QUEUED: "queued",
+  SIGNING: "signing",
+  SIGNED: "signed",
+  SUBMITTED: "submitted",
+  PENDING_DIAN: "pending_dian",
+  ACCEPTED: "accepted",
+  REJECTED: "rejected",
+  TRANSMISSION_FAILED: "transmission_failed",
+};
+
+export const INVOICE_STATE_TRANSITIONS: Record<string, string[]> = {
+  [INVOICE_STATES.DRAFT]: [INVOICE_STATES.QUEUED],
+  [INVOICE_STATES.QUEUED]: [INVOICE_STATES.SIGNING],
+  [INVOICE_STATES.SIGNING]: [INVOICE_STATES.SIGNED, INVOICE_STATES.TRANSMISSION_FAILED],
+  [INVOICE_STATES.SIGNED]: [INVOICE_STATES.SUBMITTED, INVOICE_STATES.TRANSMISSION_FAILED],
+  [INVOICE_STATES.SUBMITTED]: [INVOICE_STATES.PENDING_DIAN, INVOICE_STATES.TRANSMISSION_FAILED],
+  [INVOICE_STATES.PENDING_DIAN]: [INVOICE_STATES.ACCEPTED, INVOICE_STATES.REJECTED, INVOICE_STATES.TRANSMISSION_FAILED],
+  [INVOICE_STATES.TRANSMISSION_FAILED]: [INVOICE_STATES.QUEUED],
+  [INVOICE_STATES.ACCEPTED]: [],
+  [INVOICE_STATES.REJECTED]: [],
+};
+
 export interface CreateInvoiceInput {
   invoiceType?: string;
   paymentFormCode?: string;
@@ -109,6 +133,23 @@ export class InvoicesService {
       this.configService.get<string>("STORAGE_PATH") || "./storage";
   }
 
+  async transitionState(
+    manager: import("typeorm").EntityManager,
+    invoice: Invoice,
+    newState: string,
+  ): Promise<Invoice> {
+    const allowedTransitions = INVOICE_STATE_TRANSITIONS[invoice.status] || [];
+    if (!allowedTransitions.includes(newState)) {
+      throw new ConflictException(
+        `Transición de estado inválida: no se puede pasar de '${invoice.status}' a '${newState}'`,
+      );
+    }
+
+    // El @VersionColumn() en Invoice maneja el lock optimista automáticamente al guardar.
+    invoice.status = newState;
+    return manager.save(Invoice, invoice);
+  }
+
   async create(
     tenantId: string,
     input: CreateInvoiceInput,
@@ -156,15 +197,15 @@ export class InvoicesService {
 
         // Business validations
         const subtotal = input.lines.reduce(
-          (sum, l) => sum.add(new Money(l.lineExtensionAmount || new Money(l.quantity).multiply(l.unitPrice).toNumber())),
-          new Money(0),
+          (sum, l) => sum.add(new Money(String(l.lineExtensionAmount || new Money(String(l.quantity)).multiply(String(l.unitPrice)).toExactString()))),
+          new Money("0"),
         );
-        const totalTax = input.taxTotals.reduce((sum, t) => sum.add(new Money(t.taxAmount)), new Money(0));
+        const totalTax = input.taxTotals.reduce((sum, t) => sum.add(new Money(String(t.taxAmount))), new Money("0"));
         const totalAmount = subtotal.add(totalTax);
 
         this.validationsService.validateInvoice({
           lines: input.lines.map((l) => ({
-            lineExtensionAmount: l.lineExtensionAmount || new Money(l.quantity).multiply(l.unitPrice).toNumber(),
+            lineExtensionAmount: Number(l.lineExtensionAmount || new Money(String(l.quantity)).multiply(String(l.unitPrice)).toExactString()),
             quantity: l.quantity,
             unitPrice: l.unitPrice,
             taxCode: l.taxCode || "01",
@@ -172,9 +213,9 @@ export class InvoicesService {
             taxAmount: l.taxAmount || 0,
           })),
           taxTotals: input.taxTotals,
-          subtotal: subtotal.toNumber(),
-          totalTax: totalTax.toNumber(),
-          totalAmount: totalAmount.toNumber(),
+          subtotal: subtotal.toExactString() as any,
+          totalTax: totalTax.toExactString() as any,
+          totalAmount: totalAmount.toExactString() as any,
           customerDocumentType: customer.documentType,
           customerDocumentNumber: customer.documentNumber,
           issueDate: input.issueDate,
@@ -186,6 +227,7 @@ export class InvoicesService {
         const { number } = await this.numberingRangesService.reserveNextNumber(
           tenantId,
           input.prefix,
+          manager,
         );
 
         // Generate CUFE
@@ -216,6 +258,7 @@ export class InvoicesService {
         // Create invoice entity
         const invoice = manager.create(Invoice, {
           tenantId,
+          prefix: input.prefix,
           number,
           invoiceType: input.invoiceType || "01",
           paymentFormCode: input.paymentFormCode || "1",
@@ -226,10 +269,10 @@ export class InvoicesService {
           customerName: customer.name,
           customerDocument: customer.documentNumber,
           customerDocumentType: customer.documentType,
-          subtotal: subtotal.toNumber(),
-          totalTax: totalTax.toNumber(),
-          totalAmount: totalAmount.toNumber(),
-          status: "draft",
+          subtotal: subtotal.toExactString() as any,
+          totalTax: totalTax.toExactString() as any,
+          totalAmount: totalAmount.toExactString() as any,
+          status: INVOICE_STATES.DRAFT,
           cufe,
           qrCode,
           idempotencyKey: input.idempotencyKey,
@@ -323,9 +366,9 @@ export class InvoicesService {
             fiscalResponsibilities: customer.fiscalResponsibilities || ["O-99"],
           },
           taxTotals: input.taxTotals,
-          subtotal: subtotal.toNumber(),
-          totalTax: totalTax.toNumber(),
-          totalAmount: totalAmount.toNumber(),
+          subtotal: subtotal.toExactString() as any,
+          totalTax: totalTax.toExactString() as any,
+          totalAmount: totalAmount.toExactString() as any,
           lines: input.lines.map((l) => ({
             lineNumber: l.lineNumber,
             description: l.description,
@@ -391,22 +434,19 @@ export class InvoicesService {
           customer.name,
           customer.documentNumber,
           input.issueDate,
-          subtotal.toNumber(),
-          totalTax.toNumber(),
-          totalAmount.toNumber(),
+          subtotal.toExactString(),
+          totalTax.toExactString(),
+          totalAmount.toExactString(),
           cufe,
           tenant.name,
           tenant.nit,
           pdfPath,
         );
 
-        // Update invoice with paths
-        await manager.update(Invoice, savedInvoice.id, {
-          xmlPath,
-          signedXmlPath,
-          pdfPath,
-          status: "pending",
-        });
+        savedInvoice.xmlPath = xmlPath;
+        savedInvoice.signedXmlPath = signedXmlPath;
+        savedInvoice.pdfPath = pdfPath;
+        await this.transitionState(manager, savedInvoice, INVOICE_STATES.QUEUED);
 
         // Create submission record
         const submission = manager.create(DianSubmission, {

@@ -1,8 +1,9 @@
-import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
+import { Entity, Column, ManyToOne, JoinColumn, Check } from "typeorm";
 import { TenantEntity } from "./base.entity";
 import { Tenant } from "./tenant.entity";
 
 @Entity("numbering_ranges")
+@Check("chk_numbering_range_valid", '"from_number" <= "to_number" AND "current_number" >= 0')
 export class NumberingRange extends TenantEntity {
   @Column({ type: "varchar", length: 10 })
   prefix: string;

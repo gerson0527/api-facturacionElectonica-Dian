@@ -75,4 +75,42 @@ describe("TenantRlsInterceptor", () => {
       },
     });
   });
+
+  it("debe manejar errores al establecer RLS", (done) => {
+    (getTenantContext as jest.Mock).mockReturnValue({ tenantId: "tenant-123" });
+    jest.spyOn(rlsService, "setSessionTenant").mockRejectedValue(new Error("set error"));
+    
+    // Accedemos a logger usando cast a any
+    const loggerSpy = jest.spyOn((interceptor as any).logger, "error");
+    const next = { handle: () => of("done") };
+
+    interceptor.intercept(mockContext, next).subscribe({
+      complete: () => {
+        // Necesitamos esperar a que la promesa rechazada se maneje
+        setTimeout(() => {
+          expect(loggerSpy).toHaveBeenCalledWith("Failed to set RLS context: set error");
+          done();
+        }, 10);
+      },
+    });
+  });
+
+  it("debe manejar errores al limpiar RLS", (done) => {
+    (getTenantContext as jest.Mock).mockReturnValue({ tenantId: "tenant-123" });
+    jest.spyOn(rlsService, "setSessionTenant").mockResolvedValue(undefined);
+    jest.spyOn(rlsService, "clearSessionTenant").mockRejectedValue(new Error("clear error"));
+    
+    const loggerSpy = jest.spyOn((interceptor as any).logger, "error");
+    const next = { handle: () => of("done") };
+
+    interceptor.intercept(mockContext, next).subscribe({
+      complete: () => {
+        // La limpieza ocurre en finalize, también es asíncrono
+        setTimeout(() => {
+          expect(loggerSpy).toHaveBeenCalledWith("Failed to clear RLS context: clear error");
+          done();
+        }, 10);
+      },
+    });
+  });
 });

@@ -12,24 +12,24 @@ export class PdfQrService {
   async generatePdf(
     invoiceNumber: string,
     customerName: string,
-    customerDocument: string,
+    customerNit: string,
     issueDate: string,
-    subtotal: number,
-    totalTax: number,
-    totalAmount: number,
+    subtotal: string,
+    totalTax: string,
+    totalAmount: string,
     cufe: string,
-    issuerName: string,
-    issuerNit: string,
-    filePath: string,
-  ): Promise<string> {
+    tenantName: string,
+    tenantNit: string,
+    outputPath: string,
+  ): Promise<void> {
     const qrDataUrl = await QRCode.toDataURL(
       `https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${cufe}`,
       { width: 200, margin: 2 },
     );
 
-    return new Promise<string>((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       const doc = new PDFDocument({ size: "A4", margin: 50 });
-      const stream = createWriteStream(filePath);
+      const stream = createWriteStream(outputPath);
 
       doc.pipe(stream);
 
@@ -46,15 +46,15 @@ export class PdfQrService {
       // Issuer info
       doc.fontSize(10).font("Helvetica-Bold").text("EMISOR:");
       doc.font("Helvetica").fontSize(9);
-      doc.text(`Razón Social: ${issuerName}`);
-      doc.text(`NIT: ${issuerNit}`);
+      doc.text(`Razón Social: ${tenantName}`);
+      doc.text(`NIT: ${tenantNit}`);
       doc.moveDown(0.5);
 
       // Customer info
       doc.font("Helvetica-Bold").text("ADQUIRENTE:");
       doc.font("Helvetica").fontSize(9);
       doc.text(`Nombre: ${customerName}`);
-      doc.text(`Documento: ${customerDocument}`);
+      doc.text(`Documento: ${customerNit}`);
       doc.text(`Fecha de Emisión: ${issueDate}`);
       doc.moveDown(0.5);
 
@@ -70,11 +70,11 @@ export class PdfQrService {
       doc.font("Helvetica").fontSize(9);
       doc.text(`Venta`, 50, doc.y, { width: 200 });
       doc.text("1", 260, doc.y - 12, { width: 50, align: "center" });
-      doc.text(`$${subtotal.toFixed(2)}`, 310, doc.y - 12, {
+      doc.text(`$${Number(subtotal).toFixed(2)}`, 310, doc.y - 12, {
         width: 80,
         align: "right",
       });
-      doc.text(`$${subtotal.toFixed(2)}`, 400, doc.y - 12, {
+      doc.text(`$${Number(subtotal).toFixed(2)}`, 400, doc.y - 12, {
         width: 100,
         align: "right",
       });
@@ -84,18 +84,18 @@ export class PdfQrService {
       const totalsY = doc.y;
       doc.font("Helvetica").fontSize(9);
       doc.text("Subtotal:", 350, totalsY);
-      doc.text(`$${subtotal.toFixed(2)}`, 400, totalsY, {
+      doc.text(`$${Number(subtotal).toFixed(2)}`, 400, totalsY, {
         width: 100,
         align: "right",
       });
       doc.text("Total Impuestos:", 350, doc.y + 15);
-      doc.text(`$${totalTax.toFixed(2)}`, 400, doc.y, {
+      doc.text(`$${Number(totalTax).toFixed(2)}`, 400, doc.y, {
         width: 100,
         align: "right",
       });
       doc.font("Helvetica-Bold").fontSize(10);
       doc.text("TOTAL:", 350, doc.y + 20);
-      doc.text(`$${totalAmount.toFixed(2)}`, 400, doc.y, {
+      doc.text(`$${Number(totalAmount).toFixed(2)}`, 400, doc.y, {
         width: 100,
         align: "right",
       });
@@ -120,7 +120,7 @@ export class PdfQrService {
           { align: "center", width: doc.page.width - 100 },
         );
       doc.text(
-        `Generado por: ${issuerName} | NIT: ${issuerNit}`,
+        `Generado por: ${tenantName} | NIT: ${tenantNit}`,
         50,
         doc.page.height - 60,
         { align: "center", width: doc.page.width - 100 },
@@ -128,7 +128,7 @@ export class PdfQrService {
 
       doc.end();
 
-      stream.on("finish", () => resolve(filePath));
+      stream.on("finish", () => resolve());
       stream.on("error", reject);
     });
   }

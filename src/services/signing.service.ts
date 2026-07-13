@@ -176,6 +176,9 @@ export class SigningService {
   }
 
   private insertSignatureIntoXml(xml: string, signatureXml: string): string {
+    if (xml.includes("__SIGNATURE_PLACEHOLDER__")) {
+      return xml.replace("__SIGNATURE_PLACEHOLDER__", signatureXml);
+    }
     const marker = "</ext:UBLExtensions>";
     const idx = xml.indexOf(marker);
     if (idx === -1) {

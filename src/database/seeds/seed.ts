@@ -1,5 +1,6 @@
 import { DataSource } from "typeorm";
 import { dataSourceOptions } from "../../config/database.config";
+import { seedCatalogs } from "./catalogs.seed";
 
 async function runSeed() {
   const dataSource = new DataSource(dataSourceOptions);
@@ -12,25 +13,41 @@ async function runSeed() {
     const tenantId = "00000000-0000-0000-0000-000000000001";
     const hashedPassword = "$2b$10$dummy_hash_for_admin"; // Replace with real bcrypt hash
 
-    await queryRunner.query(
-      `
-      INSERT INTO tenants (id, name, nit, dv, enabled, environment, created_at, updated_at)
-      VALUES ($1, 'Super Admin Tenant', '000000000', '0', true, 'habilitacion', NOW(), NOW())
-      ON CONFLICT (id) DO NOTHING
-    `,
-      [tenantId],
-    );
+    const tenantRepo = queryRunner.manager.getRepository("Tenant");
+    const userRepo = queryRunner.manager.getRepository("User");
 
-    await queryRunner.query(
-      `
-      INSERT INTO users (id, tenant_id, email, hashed_password, full_name, role, is_active, created_at, updated_at)
-      VALUES ($1, $2, 'superadmin@system.com', $3, 'Super Admin', 'super_admin', true, NOW(), NOW())
-      ON CONFLICT (email) DO NOTHING
-    `,
-      [require("uuid").v4(), tenantId, hashedPassword],
-    );
+    let tenant = await tenantRepo.findOneBy({ id: tenantId });
+    if (!tenant) {
+      tenant = tenantRepo.create({
+        id: tenantId,
+        name: 'Super Admin Tenant',
+        nit: '000000000',
+        dv: '0',
+        enabled: true,
+        environment: 'habilitacion'
+      });
+      await tenantRepo.save(tenant);
+    }
+
+    let user = await userRepo.findOneBy({ email: 'superadmin@system.com' });
+    if (!user) {
+      user = userRepo.create({
+        id: require("uuid").v4(),
+        tenant,
+        email: 'superadmin@system.com',
+        hashedPassword,
+        fullName: 'Super Admin',
+        role: 'super_admin',
+        isActive: true
+      });
+      await userRepo.save(user);
+    }
 
     await queryRunner.commitTransaction();
+    
+    // Run catalogs seed outside this tenant transaction
+    await seedCatalogs(dataSource);
+
     console.log("Seed completed successfully");
   } catch (err) {
     await queryRunner.rollbackTransaction();

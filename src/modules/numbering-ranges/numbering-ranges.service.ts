@@ -48,49 +48,62 @@ export class NumberingRangesService {
   async reserveNextNumber(
     tenantId: string,
     prefix: string,
+    manager?: import("typeorm").EntityManager,
   ): Promise<{ number: string; rangeId: string }> {
+    if (manager) {
+      return this._reserveInternal(manager, tenantId, prefix);
+    }
+
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
-      const range = await queryRunner.manager
-        .createQueryBuilder(NumberingRange, "nr")
-        .setLock("pessimistic_write")
-        .where("nr.tenantId = :tenantId", { tenantId })
-        .andWhere("nr.prefix = :prefix", { prefix })
-        .andWhere("nr.isActive = :isActive", { isActive: true })
-        .getOne();
-
-      if (!range) {
-        throw new NotFoundException(
-          `Rango de numeración con prefijo ${prefix} no encontrado`,
-        );
-      }
-
-      const nextNumber = range.currentNumber + 1;
-      if (nextNumber > range.toNumber) {
-        throw new ConflictException(
-          `Rango de numeración agotado para prefijo ${prefix}`,
-        );
-      }
-
-      await queryRunner.manager
-        .createQueryBuilder()
-        .update(NumberingRange)
-        .set({ currentNumber: nextNumber })
-        .where("id = :id", { id: range.id })
-        .execute();
-
+      const result = await this._reserveInternal(queryRunner.manager, tenantId, prefix);
       await queryRunner.commitTransaction();
-
-      const formattedNumber = `${range.prefix}${String(nextNumber).padStart(10, "0")}`;
-      return { number: formattedNumber, rangeId: range.id };
+      return result;
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
     } finally {
       await queryRunner.release();
     }
+  }
+
+  private async _reserveInternal(
+    manager: import("typeorm").EntityManager,
+    tenantId: string,
+    prefix: string,
+  ): Promise<{ number: string; rangeId: string }> {
+    const range = await manager
+      .createQueryBuilder(NumberingRange, "nr")
+      .setLock("pessimistic_write")
+      .where("nr.tenantId = :tenantId", { tenantId })
+      .andWhere("nr.prefix = :prefix", { prefix })
+      .andWhere("nr.isActive = :isActive", { isActive: true })
+      .getOne();
+
+    if (!range) {
+      throw new NotFoundException(
+        `Rango de numeración con prefijo ${prefix} no encontrado`,
+      );
+    }
+
+    const nextNumber = range.currentNumber + 1;
+    if (nextNumber > range.toNumber) {
+      throw new ConflictException(
+        `Rango de numeración agotado para prefijo ${prefix}`,
+      );
+    }
+
+    await manager
+      .createQueryBuilder()
+      .update(NumberingRange)
+      .set({ currentNumber: nextNumber })
+      .where("id = :id", { id: range.id })
+      .execute();
+
+    const formattedNumber = `${range.prefix}${String(nextNumber).padStart(10, "0")}`;
+    return { number: formattedNumber, rangeId: range.id };
   }
 }

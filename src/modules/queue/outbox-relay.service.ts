@@ -119,4 +119,21 @@ export class OutboxRelayService implements OnApplicationBootstrap {
       });
     }
   }
+
+  async retryDlq() {
+    this.logger.log("Retrying failed DLQ events");
+    // Find failed events
+    const failedEvents = await this.outboxRepo.find({
+      where: { status: "failed" },
+      take: 100,
+    });
+
+    for (const event of failedEvents) {
+      await this.outboxRepo.update(event.id, {
+        status: "pending",
+        error: null as any,
+      });
+    }
+    return { retried: failedEvents.length };
+  }
 }

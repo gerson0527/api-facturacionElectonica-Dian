@@ -88,37 +88,18 @@ export interface DebitNoteXmlData extends DocumentXmlData {
   description?: string;
 }
 
-const PAYMENT_FORM_MAP: Record<string, string> = {
-  "1": "1",
-  "2": "2",
-  "3": "3",
-  "4": "4",
-  "5": "5",
-};
+// Static maps removed in favor of CatalogsService
 
-const DOC_TYPE_MAP: Record<string, string> = {
-  "11": "11",
-  "12": "12",
-  "13": "13",
-  "31": "31",
-};
-
-const TAX_NAME_MAP: Record<string, string> = {
-  "01": "IVA",
-  "02": "INC",
-  "03": "ICA",
-  "04": "ICUI",
-  "05": "ReteIVA",
-  "06": "ReteFuente",
-  "07": "ReteICA",
-  "08": "INPO",
-};
+import { CatalogsService } from "../modules/catalogs/catalogs.service";
 
 @Injectable()
 export class XmlBuilderService {
   private readonly logger = new Logger(XmlBuilderService.name);
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    private configService: ConfigService,
+    private catalogsService: CatalogsService,
+  ) {}
 
   async buildInvoiceXml(data: InvoiceXmlData): Promise<string> {
     const doc = create({ version: "1.0", encoding: "UTF-8" }).ele("Invoice", {
@@ -379,10 +360,7 @@ export class XmlBuilderService {
     const ext = parent.ele("ext:UBLExtension").ele("ext:ExtensionContent");
     this.buildInvoiceControl(ext, data);
     const ext2 = parent.ele("ext:UBLExtension").ele("ext:ExtensionContent");
-    ext2.ele("ds:Signature", {
-      "xmlns:ds": "http://www.w3.org/2000/09/xmldsig#",
-      Id: "factura-electronica",
-    });
+    ext2.txt("__SIGNATURE_PLACEHOLDER__");
   }
 
   private buildInvoiceControl(parent: XMLBuilder, data: DocumentXmlData): void {
@@ -546,7 +524,7 @@ export class XmlBuilderService {
     parent: XMLBuilder,
     customer: DocumentXmlData["customer"],
   ): void {
-    const schemeId = DOC_TYPE_MAP[customer.documentType] || "13";
+    const schemeId = this.catalogsService.getItemByCode("DOCUMENT_TYPE", customer.documentType) ? customer.documentType : "13";
     parent
       .ele("cac:AccountingCustomerParty")
       .ele("cbc:AdditionalAccountID", {
@@ -665,7 +643,7 @@ export class XmlBuilderService {
         listName: "Forma de Pago",
         listURI: "https://facturaelectronica.dian.gov.co/catalogo/formaPago",
       })
-      .txt(PAYMENT_FORM_MAP[data.paymentFormCode] || "1")
+      .txt(this.catalogsService.getItemByCode("PAYMENT_FORM", data.paymentFormCode) ? data.paymentFormCode : "1")
       .up()
       .ele("cbc:PaymentDueDate")
       .txt(data.dueDate || data.issueDate)
@@ -681,24 +659,24 @@ export class XmlBuilderService {
   ): void {
     for (const tax of data.taxTotals) {
       const currency = data.currencyCode || "COP";
-      const taxName = TAX_NAME_MAP[tax.taxId] || "IVA";
+      const taxName = this.catalogsService.getItemName("TAX", tax.taxId, "IVA");
       parent
         .ele("cac:TaxTotal")
         .ele("cbc:TaxAmount", {
           currencyID: currency,
         })
-        .txt(tax.taxAmount.toFixed(2))
+        .txt(Number(tax.taxAmount).toFixed(2))
         .up()
         .ele("cac:TaxSubtotal")
         .ele("cbc:TaxableAmount", {
           currencyID: currency,
         })
-        .txt(tax.taxableAmount.toFixed(2))
+        .txt(Number(tax.taxableAmount).toFixed(2))
         .up()
         .ele("cbc:TaxAmount", {
           currencyID: currency,
         })
-        .txt(tax.taxAmount.toFixed(2))
+        .txt(Number(tax.taxAmount).toFixed(2))
         .up()
         .ele("cac:TaxCategory")
         .ele("cbc:ID", {
@@ -733,13 +711,13 @@ export class XmlBuilderService {
     parent
       .ele("cac:LegalMonetaryTotal")
       .ele("cbc:LineExtensionAmount", { currencyID: currency })
-      .txt(data.subtotal.toFixed(2))
+      .txt(Number(data.subtotal).toFixed(2))
       .up()
       .ele("cbc:TaxExclusiveAmount", { currencyID: currency })
-      .txt(data.subtotal.toFixed(2))
+      .txt(Number(data.subtotal).toFixed(2))
       .up()
       .ele("cbc:TaxInclusiveAmount", { currencyID: currency })
-      .txt(data.totalAmount.toFixed(2))
+      .txt(Number(data.totalAmount).toFixed(2))
       .up()
       .ele("cbc:AllowanceTotalAmount", { currencyID: currency })
       .txt("0.00")
@@ -751,7 +729,7 @@ export class XmlBuilderService {
       .txt("0.00")
       .up()
       .ele("cbc:PayableAmount", { currencyID: currency })
-      .txt(data.totalAmount.toFixed(2))
+      .txt(Number(data.totalAmount).toFixed(2))
       .up();
   }
 
@@ -762,7 +740,7 @@ export class XmlBuilderService {
   ): void {
     for (const line of lines) {
       const currency = currencyCode || "COP";
-      const taxName = TAX_NAME_MAP[line.taxCode] || "IVA";
+      const taxName = this.catalogsService.getItemName("TAX", line.taxCode, "IVA");
       parent
         .ele("cac:InvoiceLine")
         .ele("cbc:ID")
@@ -776,7 +754,7 @@ export class XmlBuilderService {
         .txt(String(line.quantity))
         .up()
         .ele("cbc:LineExtensionAmount", { currencyID: currency })
-        .txt(line.lineExtensionAmount.toFixed(2))
+        .txt(Number(line.lineExtensionAmount).toFixed(2))
         .up()
         .ele("cac:Item")
         .ele("cbc:Description")
@@ -796,7 +774,7 @@ export class XmlBuilderService {
         .txt(taxName)
         .up()
         .ele("cbc:Percent")
-        .txt(line.taxPercent.toFixed(2))
+        .txt(Number(line.taxPercent).toFixed(2))
         .up()
         .ele("cac:TaxScheme")
         .ele("cbc:ID", {
@@ -813,7 +791,7 @@ export class XmlBuilderService {
         .up()
         .ele("cac:Price")
         .ele("cbc:PriceAmount", { currencyID: currency })
-        .txt(line.unitPrice.toFixed(2))
+        .txt(Number(line.unitPrice).toFixed(2))
         .up()
         .ele("cbc:BaseQuantity", {
           unitCode: line.unitCode,
@@ -832,7 +810,7 @@ export class XmlBuilderService {
   ): void {
     for (const line of lines) {
       const currency = currencyCode || "COP";
-      const taxName = TAX_NAME_MAP[line.taxCode] || "IVA";
+      const taxName = this.catalogsService.getItemName("TAX", line.taxCode, "IVA");
       parent
         .ele("cac:CreditNoteLine")
         .ele("cbc:ID")
@@ -846,7 +824,7 @@ export class XmlBuilderService {
         .txt(String(line.quantity))
         .up()
         .ele("cbc:LineExtensionAmount", { currencyID: currency })
-        .txt(line.lineExtensionAmount.toFixed(2))
+        .txt(Number(line.lineExtensionAmount).toFixed(2))
         .up()
         .ele("cac:Item")
         .ele("cbc:Description")
@@ -866,7 +844,7 @@ export class XmlBuilderService {
         .txt(taxName)
         .up()
         .ele("cbc:Percent")
-        .txt(line.taxPercent.toFixed(2))
+        .txt(Number(line.taxPercent).toFixed(2))
         .up()
         .ele("cac:TaxScheme")
         .ele("cbc:ID", {
@@ -883,7 +861,7 @@ export class XmlBuilderService {
         .up()
         .ele("cac:Price")
         .ele("cbc:PriceAmount", { currencyID: currency })
-        .txt(line.unitPrice.toFixed(2))
+        .txt(Number(line.unitPrice).toFixed(2))
         .up()
         .ele("cbc:BaseQuantity", {
           unitCode: line.unitCode,
@@ -902,7 +880,7 @@ export class XmlBuilderService {
   ): void {
     for (const line of lines) {
       const currency = currencyCode || "COP";
-      const taxName = TAX_NAME_MAP[line.taxCode] || "IVA";
+      const taxName = this.catalogsService.getItemName("TAX", line.taxCode, "IVA");
       parent
         .ele("cac:DebitNoteLine")
         .ele("cbc:ID")
@@ -916,7 +894,7 @@ export class XmlBuilderService {
         .txt(String(line.quantity))
         .up()
         .ele("cbc:LineExtensionAmount", { currencyID: currency })
-        .txt(line.lineExtensionAmount.toFixed(2))
+        .txt(Number(line.lineExtensionAmount).toFixed(2))
         .up()
         .ele("cac:Item")
         .ele("cbc:Description")
@@ -936,7 +914,7 @@ export class XmlBuilderService {
         .txt(taxName)
         .up()
         .ele("cbc:Percent")
-        .txt(line.taxPercent.toFixed(2))
+        .txt(Number(line.taxPercent).toFixed(2))
         .up()
         .ele("cac:TaxScheme")
         .ele("cbc:ID", {
@@ -953,7 +931,7 @@ export class XmlBuilderService {
         .up()
         .ele("cac:Price")
         .ele("cbc:PriceAmount", { currencyID: currency })
-        .txt(line.unitPrice.toFixed(2))
+        .txt(Number(line.unitPrice).toFixed(2))
         .up()
         .ele("cbc:BaseQuantity", {
           unitCode: line.unitCode,

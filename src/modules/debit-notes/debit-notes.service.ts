@@ -111,10 +111,10 @@ export class DebitNotesService {
           fecFac: issueDate.toISOString().split("T")[0],
           horFac:
             issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
-          valBruto: new Money(input.totalAmount).toString(),
+          valBruto: new Money(String(input.totalAmount)).toString(),
           valIva: "0.00",
           valAdicional: "0.00",
-          valTotal: new Money(input.totalAmount).toString(),
+          valTotal: new Money(String(input.totalAmount)).toString(),
           nitEmisor: tenant.nit,
           dvEmisor: tenant.dv,
           tipoDocEmisor: tenant.documentType || "31",

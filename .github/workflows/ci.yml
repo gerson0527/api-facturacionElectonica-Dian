@@ -134,6 +134,22 @@ jobs:
           JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
           JEST_JUNIT_OUTPUT_NAME: "dian-fixtures-test-results.xml"
 
+      - name: Coverage check
+        run: npm run test:cov -- --runInBand --ci
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USERNAME: postgres
+          DB_PASSWORD: postgres
+          DB_DATABASE: api_facturacion_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          NODE_ENV: test
+          JWT_ACCESS_SECRET: test-access-secret-key-for-ci-64-chars!!
+          JWT_REFRESH_SECRET: test-refresh-secret-key-for-ci-64-chars!!
+          ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          ENCRYPTION_KEY_VERSION: 1
+
       - name: npm audit
         run: npm audit --omit=dev --audit-level=high
 

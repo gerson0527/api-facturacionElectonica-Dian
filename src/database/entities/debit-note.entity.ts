@@ -1,18 +1,21 @@
-import { Entity, Column, ManyToOne, JoinColumn, Unique } from "typeorm";
+import { Entity, Column, ManyToOne, JoinColumn, Unique, Check, VersionColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
 import { Invoice } from "./invoice.entity";
 import { Tenant } from "./tenant.entity";
 
 @Entity("debit_notes")
 @Unique("uq_debit_notes_tenant_idempotency", ["tenant", "idempotencyKey"])
+@Unique("uq_debit_notes_tenant_prefix_number", ["tenant", "prefix", "number"])
+@Check("chk_debit_notes_amounts", '"total_amount" >= 0')
 export class DebitNote extends TenantEntity {
   @Column({ type: "uuid", name: "invoice_id" })
   invoiceId: string;
 
-  @Column({ type: "varchar", length: 30 })
-  number: string;
+  @Column({ type: "varchar", length: 10, default: "" })
+  prefix: string;
 
-  @Column({ type: "date", name: "issue_date" })
+  @Column({ type: "varchar", length: 30 })
+  number: string;  @Column({ type: "date", name: "issue_date" })
   issueDate: Date;
 
   @Column({ type: "varchar", length: 10, name: "reason_code" })
@@ -47,6 +50,9 @@ export class DebitNote extends TenantEntity {
 
   @Column({ type: "timestamp", name: "expires_at", nullable: true })
   expiresAt: Date;
+
+  @VersionColumn({ default: 1 })
+  version: number;
 
   @ManyToOne(() => Invoice)
   @JoinColumn({ name: "invoice_id" })

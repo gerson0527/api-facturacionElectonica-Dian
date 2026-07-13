@@ -98,4 +98,37 @@ describe("Concurrency Tests Base", () => {
     const count = await invoiceRepo.count({ where: { tenantId, idempotencyKey } });
     expect(count).toBe(1);
   });
+
+  it("should handle concurrent numbering range reservations without duplicates", async () => {
+    const numberingService = app.get(require("../src/modules/numbering-ranges/numbering-ranges.service").NumberingRangesService);
+    
+    // Create a range
+    await numberingService.create(tenantId, {
+      prefix: "LOCK",
+      fromNumber: 1,
+      toNumber: 100,
+      resolutionNumber: "RES123",
+      resolutionDate: "2024-01-01",
+    });
+
+    const promises = Array.from({ length: 15 }).map(() =>
+      numberingService.reserveNextNumber(tenantId, "LOCK")
+    );
+
+    const results = await Promise.allSettled(promises);
+    const fulfilled = results.filter((r) => r.status === "fulfilled").map((r: any) => r.value.number);
+    
+    // Check for any rejections (should not be any unless range exhausted or timeout)
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(rejected.length).toBe(0);
+
+    // Check for duplicates
+    const uniqueNumbers = new Set(fulfilled);
+    expect(uniqueNumbers.size).toBe(15);
+    expect(fulfilled.length).toBe(15);
+    
+    // Validate the sequence starts from LOCK0000000001
+    expect(fulfilled.includes("LOCK0000000001")).toBeTruthy();
+    expect(fulfilled.includes("LOCK0000000015")).toBeTruthy();
+  });
 });

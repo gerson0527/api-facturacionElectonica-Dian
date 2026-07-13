@@ -1,6 +1,7 @@
 export { BaseEntity, TenantEntity } from "./base.entity";
-export { Tenant } from "./tenant.entity";
-export { User } from "./user.entity";
+export * from "./tenant.entity";
+export * from "./user.entity";
+export * from "./catalog-item.entity";
 export { DianSoftwareCredential } from "./dian-software-credential.entity";
 export { DigitalCertificate } from "./digital-certificate.entity";
 export { NumberingRange } from "./numbering-range.entity";
