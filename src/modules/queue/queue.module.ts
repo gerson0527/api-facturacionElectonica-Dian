@@ -13,6 +13,7 @@ import { DianSubmission } from "@/database/entities/dian-submission.entity";
       { name: "dian-submission" },
       { name: "dian-status" },
       { name: "mailer" },
+      { name: "webhooks" },
     ),
   ],
   providers: [OutboxRelayService],

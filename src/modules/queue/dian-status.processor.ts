@@ -29,6 +29,7 @@ export class DianStatusProcessor extends WorkerHost {
     private readonly tenantRls: TenantRlsService,
     private readonly dianResponseService: DianResponseService,
     @InjectQueue("mailer") private readonly mailerQueue: Queue,
+    @InjectQueue("webhooks") private readonly webhooksQueue: Queue,
   ) {
     super();
   }
@@ -91,6 +92,15 @@ export class DianStatusProcessor extends WorkerHost {
 
           this.logger.log(`Queueing email delivery for invoice ${invoiceId}`);
           await this.mailerQueue.add("send-email", { invoiceId, tenantId });
+
+          this.logger.log(`Dispatching webhook event invoice.accepted for ${invoiceId}`);
+          const invoice = await this.invoiceRepo.findOne({ where: { id: invoiceId } });
+          await this.webhooksQueue.add("dispatch-webhook", {
+            tenantId,
+            event: "invoice.accepted",
+            invoiceId,
+            payload: { invoiceId, status: "accepted", cufe: invoice?.cufe }
+          });
         }
       } else if (statusCode === "01" || statusCode === "1") {
         this.logger.log(`Invoice ${invoiceId} still pending, will retry`);
@@ -109,6 +119,14 @@ export class DianStatusProcessor extends WorkerHost {
           respondedAt: new Date(),
         });
         await this.invoiceRepo.update(invoiceId, { status: "rejected" });
+
+        this.logger.log(`Dispatching webhook event invoice.rejected for ${invoiceId}`);
+        await this.webhooksQueue.add("dispatch-webhook", {
+          tenantId,
+          event: "invoice.rejected",
+          invoiceId,
+          payload: { invoiceId, status: "rejected", reason: statusResponse.StatusDescription }
+        });
       }
     } catch (err) {
       if ((err as Error).message.includes("Pending")) {

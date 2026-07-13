@@ -13,5 +13,7 @@ export { CreditNote } from "./credit-note.entity";
 export { DebitNote } from "./debit-note.entity";
 export { DianSubmission } from "./dian-submission.entity";
 export { OutboxEvent } from "./outbox-event.entity";
-export { AuditEvent } from "./audit-event.entity";
+export * from "./audit-event.entity";
+export * from "./webhook-endpoint.entity";
+export * from "./webhook-delivery.entity";
 export { RefreshToken } from "./refresh-token.entity";
