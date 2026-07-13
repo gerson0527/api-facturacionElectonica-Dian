@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios from "axios";
 import * as https from "https";
+import { SigningService } from "./signing.service";
 
 export interface SendBillResponse {
   TrackId: string;
@@ -19,7 +20,10 @@ export interface GetStatusResponse {
 export class DianSoapClient {
   private readonly logger = new Logger(DianSoapClient.name);
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    private configService: ConfigService,
+    private signingService: SigningService,
+  ) {}
 
   private getBaseUrl(): string {
     const env =
@@ -36,21 +40,31 @@ export class DianSoapClient {
   async sendBillAsync(
     fileName: string,
     contentFileBase64: string,
+    p12Buffer: Buffer,
+    password: string,
   ): Promise<SendBillResponse> {
     const url = this.getBaseUrl();
-    const soapBody = `
+    const soapBody = `<soap:Body>
+      <wcf:SendBillAsync>
+        <wcf:fileName>${fileName}</wcf:fileName>
+        <wcf:contentFile>${contentFileBase64}</wcf:contentFile>
+      </wcf:SendBillAsync>
+    </soap:Body>`;
+
+    const { securityHeader, bodyWithId } = await this.signingService.buildWsseSecurityHeader(
+      soapBody,
+      p12Buffer,
+      password,
+    );
+
+    const fullEnvelope = `
       <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
                      xmlns:wcf="http://wcf.dian.colombia">
-        <soap:Header/>
-        <soap:Body>
-          <wcf:SendBillAsync>
-            <wcf:fileName>${fileName}</wcf:fileName>
-            <wcf:contentFile>${contentFileBase64}</wcf:contentFile>
-          </wcf:SendBillAsync>
-        </soap:Body>
+        <soap:Header>${securityHeader}</soap:Header>
+        ${bodyWithId}
       </soap:Envelope>`;
 
-    return this.callSoap(url, "SendBillAsync", soapBody);
+    return this.callSoap(url, "SendBillAsync", fullEnvelope);
   }
 
   async getStatus(trackId: string): Promise<GetStatusResponse> {
@@ -104,24 +118,34 @@ export class DianSoapClient {
   async getNumberingRange(
     accountId: string,
     accountCode: string,
+    p12Buffer: Buffer,
+    password: string,
   ): Promise<any[]> {
     const url = this.getBaseUrl();
-    const soapBody = `
+    const soapBody = `<soap:Body>
+      <wcf:GetNumberingRange>
+        <wcf:accountID>${accountId}</wcf:accountID>
+        <wcf:accountCode>${accountCode}</wcf:accountCode>
+      </wcf:GetNumberingRange>
+    </soap:Body>`;
+
+    const { securityHeader, bodyWithId } = await this.signingService.buildWsseSecurityHeader(
+      soapBody,
+      p12Buffer,
+      password,
+    );
+
+    const fullEnvelope = `
       <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
                      xmlns:wcf="http://wcf.dian.colombia">
-        <soap:Header/>
-        <soap:Body>
-          <wcf:GetNumberingRange>
-            <wcf:accountID>${accountId}</wcf:accountID>
-            <wcf:accountCode>${accountCode}</wcf:accountCode>
-          </wcf:GetNumberingRange>
-        </soap:Body>
+        <soap:Header>${securityHeader}</soap:Header>
+        ${bodyWithId}
       </soap:Envelope>`;
 
     const response = await this.makeSoapRequest(
       url,
       "GetNumberingRange",
-      soapBody,
+      fullEnvelope,
     );
     return this.parseGetNumberingRangeResponse(response);
   }

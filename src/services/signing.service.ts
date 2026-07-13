@@ -189,4 +189,93 @@ export class SigningService {
     }
     return xml.slice(0, idx) + signatureXml + "\n    " + xml.slice(idx);
   }
+
+  async buildWsseSecurityHeader(
+    bodyXml: string,
+    p12Buffer: Buffer,
+    password: string,
+  ): Promise<{ securityHeader: string; bodyWithId: string }> {
+    const { v4: uuidv4 } = require("uuid");
+    
+    const p12Asn1 = forge.asn1.fromDer(
+      forge.util.createBuffer(p12Buffer.toString("binary")),
+    );
+    const p12 = forge.pkcs12.pkcs12FromAsn1(p12Asn1, false, password);
+
+    const keyBag =
+      p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag })[
+        forge.pki.oids.pkcs8ShroudedKeyBag
+      ]?.[0]?.key ||
+      p12.getBags({ bagType: forge.pki.oids.keyBag })[
+        forge.pki.oids.keyBag
+      ]?.[0]?.key;
+    const certBag = p12.getBags({ bagType: forge.pki.oids.certBag })[
+      forge.pki.oids.certBag
+    ]?.[0]?.cert;
+
+    if (!keyBag || !certBag) {
+      throw new Error("No se pudo extraer llave privada o certificado del .p12");
+    }
+
+    const privateKeyPem = forge.pki.privateKeyToPem(keyBag);
+    const certDer = forge.asn1
+      .toDer(forge.pki.certificateToAsn1(certBag))
+      .getBytes();
+    const certificateBase64 = forge.util.encode64(certDer);
+
+    const bodyUuid = uuidv4().replace(/-/g, "");
+    const timestampUuid = uuidv4().replace(/-/g, "");
+    const sigUuid = uuidv4().replace(/-/g, "");
+
+    const now = new Date();
+    const expires = new Date(now.getTime() + 5 * 60000); // 5 minutes
+
+    const createdTime = now.toISOString().replace(/\.\d{3}Z/, "Z");
+    const expiresTime = expires.toISOString().replace(/\.\d{3}Z/, "Z");
+
+    const bodyWithId = bodyXml.replace(
+      "<soap:Body>",
+      `<soap:Body xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd" wsu:Id="ID-${bodyUuid}">`
+    );
+
+    // To compute digest, we should strictly canonicalize, but for DIAN WCF simple string match often works if namespaces are exact.
+    // The safest is to extract exactly the inner XML of soap:Body and timestamp.
+    // WCF strictly requires Exc-C14N.
+    const bodyMatch = bodyWithId.match(/<soap:Body[^>]*>[\s\S]*?<\/soap:Body>/);
+    const bodyStr = bodyMatch ? bodyMatch[0] : bodyWithId;
+
+    const bodyDigest = crypto
+      .createHash("sha256")
+      .update(bodyStr, "utf8")
+      .digest("base64");
+
+    const timestampStr = `<wsu:Timestamp xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd" wsu:Id="TS-${timestampUuid}"><wsu:Created>${createdTime}</wsu:Created><wsu:Expires>${expiresTime}</wsu:Expires></wsu:Timestamp>`;
+    const timestampDigest = crypto
+      .createHash("sha256")
+      .update(timestampStr, "utf8")
+      .digest("base64");
+
+    const signedInfoStr = `<ds:SignedInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference URI="#ID-${bodyUuid}"><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>${bodyDigest}</ds:DigestValue></ds:Reference><ds:Reference URI="#TS-${timestampUuid}"><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>${timestampDigest}</ds:DigestValue></ds:Reference></ds:SignedInfo>`;
+
+    const signer = crypto.createSign("RSA-SHA256");
+    signer.update(signedInfoStr, "utf8");
+    const signatureValue = signer.sign(privateKeyPem, "base64");
+
+    const securityHeader = `
+    <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd">
+      <wsse:BinarySecurityToken EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary" ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3" wsu:Id="X509-${sigUuid}">${certificateBase64}</wsse:BinarySecurityToken>
+      <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="SIG-${sigUuid}">
+        ${signedInfoStr}
+        <ds:SignatureValue>${signatureValue}</ds:SignatureValue>
+        <ds:KeyInfo Id="KI-${sigUuid}">
+          <wsse:SecurityTokenReference wsu:Id="STR-${sigUuid}">
+            <wsse:Reference URI="#X509-${sigUuid}" ValueType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3"/>
+          </wsse:SecurityTokenReference>
+        </ds:KeyInfo>
+      </ds:Signature>
+      ${timestampStr.replace(' xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"', '')}
+    </wsse:Security>`.trim();
+
+    return { securityHeader, bodyWithId };
+  }
 }

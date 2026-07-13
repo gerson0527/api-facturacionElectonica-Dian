@@ -60,6 +60,13 @@ export class Money {
     return this._amount.toString();
   }
 
+  /**
+   * Returns a string representation of the value rounded to the specified number of decimal places, padded with zeros if necessary.
+   */
+  toFixed(fractionalDigits: number = 2): string {
+    return this._amount.toFixed(fractionalDigits, this.policy.strategy as Decimal.Rounding);
+  }
+
   add(other: Money): Money {
     return new Money(this._amount.plus(other.amount), this.policy);
   }

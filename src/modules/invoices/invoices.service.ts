@@ -230,17 +230,29 @@ export class InvoicesService {
           manager,
         );
 
-        // Generate CUFE
+        // Calculate taxes per DIAN category for CUFE
+        let valIva = new Money("0");
+        let valAdicional = new Money("0");
+
+        for (const tax of input.taxTotals) {
+          if (tax.taxId === "01") {
+            valIva = valIva.add(new Money(String(tax.taxAmount)));
+          } else if (["04", "22", "34", "35"].includes(tax.taxId)) {
+            // INC and Impuestos Saludables
+            valAdicional = valAdicional.add(new Money(String(tax.taxAmount)));
+          }
+        }
+
         const issueDate = new Date(input.issueDate);
         const cufeInput = {
           numFac: number,
           fecFac: issueDate.toISOString().split("T")[0],
           horFac:
             issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
-          valBruto: subtotal.toString(),
-          valIva: totalTax.toString(),
-          valAdicional: "0.00",
-          valTotal: totalAmount.toString(),
+          valBruto: subtotal.toFixed(2),
+          valIva: valIva.toFixed(2),
+          valAdicional: valAdicional.toFixed(2),
+          valTotal: totalAmount.toFixed(2),
           nitEmisor: tenant.nit,
           dvEmisor: tenant.dv,
           tipoDocEmisor: tenant.documentType || "31",

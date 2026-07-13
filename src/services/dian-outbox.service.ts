@@ -5,6 +5,7 @@ import { DianSubmission } from "@/database/entities/dian-submission.entity";
 import { DianSoapClient } from "./dian-soap.client";
 import { StorageService } from "./storage.service";
 import { ConfigService } from "@nestjs/config";
+import { CertificatesService } from "@/modules/certificates/certificates.service";
 
 export interface OutboxCreateInput {
   invoiceId: string;
@@ -30,6 +31,7 @@ export class DianOutboxService {
     private readonly soapClient: DianSoapClient,
     private readonly storage: StorageService,
     private readonly dataSource: DataSource,
+    private readonly certificatesService: CertificatesService,
     configService: ConfigService,
   ) {
     this.maxRetries = configService.get<number>("DIAN_MAX_RETRIES") || 3;
@@ -98,9 +100,20 @@ export class DianOutboxService {
       locked.submittedAt = new Date();
       await queryRunner.manager.save(locked);
 
+      const cert = await queryRunner.manager.query(
+        `SELECT dc.id FROM digital_certificates dc WHERE dc.tenant_id = $1 AND dc.is_active = true LIMIT 1`,
+        [submission.tenantId]
+      );
+      if (!cert || cert.length === 0) {
+        throw new Error("No active digital certificate found for tenant");
+      }
+      const { pfxBuffer, password } = await this.certificatesService.getDecryptedPfx(cert[0].id, submission.tenantId);
+
       const response = await this.soapClient.sendBillAsync(
         zipFileName,
         zipContent.toString("base64"),
+        pfxBuffer,
+        password
       );
       const trackId = response.TrackId;
 

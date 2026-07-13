@@ -111,10 +111,10 @@ export class CreditNotesService {
           fecFac: issueDate.toISOString().split("T")[0],
           horFac:
             issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
-          valBruto: new Money(String(input.totalAmount)).toString(),
+          valBruto: new Money(String(input.totalAmount)).toFixed(2),
           valIva: "0.00",
           valAdicional: "0.00",
-          valTotal: new Money(String(input.totalAmount)).toString(),
+          valTotal: new Money(String(input.totalAmount)).toFixed(2),
           nitEmisor: tenant.nit,
           dvEmisor: tenant.dv,
           tipoDocEmisor: tenant.documentType || "31",

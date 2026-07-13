@@ -35,6 +35,7 @@ import { TenantRlsInterceptor } from "./common/interceptors/tenant-rls.intercept
 import { TenantRlsService } from "./common/database/tenant-rls.service";
 import { AuditService } from "./services/audit.service";
 import { DianSoapClient } from "./services/dian-soap.client";
+import { DianResponseService } from "./services/dian-response.service";
 import { PdfQrService } from "./services/pdf-qr.service";
 import { CufeService } from "./services/cufe.service";
 import { XmlBuilderService } from "./services/xml-builder.service";
@@ -170,6 +171,7 @@ import { ScheduleModule } from "@nestjs/schedule";
     EnvSecretsProvider,
     { provide: SECRETS_PROVIDER_TOKEN, useClass: EnvSecretsProvider },
     TenantRlsService,
+    DianResponseService,
     {
       provide: APP_INTERCEPTOR,
       useClass: TenantRlsInterceptor,

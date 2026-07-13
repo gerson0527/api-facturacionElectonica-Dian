@@ -11,6 +11,7 @@ import { ConfigService } from "@nestjs/config";
 import { TenantRlsService } from "@/common/database/tenant-rls.service";
 import * as fs from "fs/promises";
 import * as path from "path";
+import { DianResponseService } from "@/services/dian-response.service";
 
 @Injectable()
 @Processor("dian-status")
@@ -26,6 +27,7 @@ export class DianStatusProcessor extends WorkerHost {
     private readonly pdfQrService: PdfQrService,
     private readonly configService: ConfigService,
     private readonly tenantRls: TenantRlsService,
+    private readonly dianResponseService: DianResponseService,
   ) {
     super();
   }
@@ -63,9 +65,25 @@ export class DianStatusProcessor extends WorkerHost {
             this.configService.get<string>("STORAGE_PATH") || "./storage";
           const dianDir = path.join(storagePath, "dian", job.data.tenantId);
           await fs.mkdir(dianDir, { recursive: true });
-          const responsePath = path.join(dianDir, `response_${trackId}.xml`);
           const xmlBuffer = Buffer.from(statusResponse.XmlBytes, "base64");
+          const xmlString = xmlBuffer.toString("utf8");
+
+          const parsedResponse = this.dianResponseService.parseApplicationResponse(xmlString);
+
+          const responsePath = path.join(dianDir, `response_${trackId}.xml`);
           await fs.writeFile(responsePath, xmlBuffer);
+
+          if (!parsedResponse.isAccepted) {
+            this.logger.warn(`Invoice ${invoiceId} parsed as rejected by ApplicationResponse`);
+            await this.submissionRepo.update(submissionId, {
+              status: "rejected",
+              responseMessage: `Validation Rules Failed: ${parsedResponse.validationRules.map(r => r.ruleId).join(", ")}`,
+              respondedAt: new Date(),
+            });
+            await this.invoiceRepo.update(invoiceId, { status: "rejected" });
+            return;
+          }
+
           await this.invoiceRepo.update(invoiceId, {
             dianResponsePath: responsePath,
           });

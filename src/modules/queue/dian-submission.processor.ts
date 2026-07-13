@@ -13,6 +13,7 @@ import { Invoice } from "@/database/entities/invoice.entity";
 import { DianSoapClient } from "@/services/dian-soap.client";
 import { ConfigService } from "@nestjs/config";
 import { TenantRlsService } from "@/common/database/tenant-rls.service";
+import { CertificatesService } from "@/modules/certificates/certificates.service";
 import * as fs from "fs/promises";
 import * as path from "path";
 
@@ -31,6 +32,7 @@ export class DianSubmissionProcessor extends WorkerHost {
     private readonly dianSoapClient: DianSoapClient,
     private readonly configService: ConfigService,
     private readonly tenantRls: TenantRlsService,
+    private readonly certificatesService: CertificatesService,
   ) {
     super();
   }
@@ -63,11 +65,24 @@ export class DianSubmissionProcessor extends WorkerHost {
       const fileName = path.basename(zipPath);
 
       // Send to DIAN
+      // We need the digital certificate to sign the SOAP message with WS-Security
+      const cert = await this.submissionRepo.manager.query(
+        `SELECT dc.id FROM digital_certificates dc WHERE dc.tenant_id = $1 AND dc.is_active = true LIMIT 1`,
+        [tenantId]
+      );
+      
+      if (!cert || cert.length === 0) {
+        throw new Error("No active digital certificate found for tenant");
+      }
+
+      const { pfxBuffer, password } = await this.certificatesService.getDecryptedPfx(cert[0].id, tenantId);
+
       const response = await this.dianSoapClient.sendBillAsync(
         fileName,
         contentFileBase64,
+        pfxBuffer,
+        password
       );
-
       if (response.TrackId) {
         await this.submissionRepo.update(submissionId, {
           status: "submitted",
