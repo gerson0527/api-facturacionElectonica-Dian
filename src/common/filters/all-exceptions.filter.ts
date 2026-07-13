@@ -5,8 +5,8 @@ import {
   HttpException,
   HttpStatus,
   Logger,
-} from '@nestjs/common';
-import { Request, Response } from 'express';
+} from "@nestjs/common";
+import { Request, Response } from "express";
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -18,14 +18,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message: string | string[] = 'Error interno del servidor';
+    let message: string | string[] = "Error interno del servidor";
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const exResponse = exception.getResponse();
-      if (typeof exResponse === 'string') {
+      if (typeof exResponse === "string") {
         message = exResponse;
-      } else if (typeof exResponse === 'object') {
+      } else if (typeof exResponse === "object") {
         const obj = exResponse as Record<string, any>;
         message = obj.message || obj.error || message;
       }
@@ -33,11 +33,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.error(`Unhandled: ${exception.message}`, exception.stack);
     }
 
+    const requestId = (request as any).requestId || 'unknown';
+
     response.status(status).json({
-      statusCode: status,
+      code: status,
       message,
-      timestamp: new Date().toISOString(),
-      path: request.url,
+      details: request.url,
+      requestId,
     });
   }
 }

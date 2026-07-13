@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import * as crypto from 'crypto';
+import { Injectable } from "@nestjs/common";
+import * as crypto from "crypto";
 
 export interface CufeInput {
   numFac: string;
@@ -38,8 +38,12 @@ export class CufeService {
       input.dvAdquirente,
       input.softwarePin,
       input.ambiente,
-    ].join('');
+    ].join("");
 
-    return crypto.createHash('sha384').update(concatenated, 'utf8').digest('hex').toUpperCase();
+    return crypto
+      .createHash("sha384")
+      .update(concatenated, "utf8")
+      .digest("hex")
+      .toUpperCase();
   }
 }

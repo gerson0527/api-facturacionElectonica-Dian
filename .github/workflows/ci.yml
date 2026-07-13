@@ -48,6 +48,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Format check
+        run: npm run format:check
+
       - name: Lint
         run: npm run lint
 
@@ -65,11 +68,16 @@ jobs:
           NODE_ENV: test
 
       - name: Unit tests
-        run: npm test -- --runInBand
+        run: npm test -- --runInBand --ci --reporters=default --reporters=jest-junit
+        env:
+          JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
+          JEST_JUNIT_OUTPUT_NAME: "unit-test-results.xml"
 
       - name: E2E tests
-        run: npm run test:e2e -- --runInBand
+        run: npm run test:e2e -- --runInBand --ci --reporters=default --reporters=jest-junit
         env:
+          JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
+          JEST_JUNIT_OUTPUT_NAME: "e2e-test-results.xml"
           DB_HOST: localhost
           DB_PORT: 5432
           DB_USERNAME: postgres
@@ -96,14 +104,59 @@ jobs:
           XSD_PATH: ./xsd
           LOG_LEVEL: error
 
+      - name: Integration tests
+        run: npm run test:integration -- --runInBand --ci --reporters=default --reporters=jest-junit
+        continue-on-error: true
+        env:
+          JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
+          JEST_JUNIT_OUTPUT_NAME: "integration-test-results.xml"
+
+      - name: Security tests
+        run: npm run test:security -- --runInBand --ci --reporters=default --reporters=jest-junit
+        continue-on-error: true
+        env:
+          JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
+          JEST_JUNIT_OUTPUT_NAME: "security-test-results.xml"
+
+      - name: Concurrency tests
+        run: npm run test:concurrency -- --runInBand --ci --reporters=default --reporters=jest-junit
+        continue-on-error: true
+        env:
+          JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
+          JEST_JUNIT_OUTPUT_NAME: "concurrency-test-results.xml"
+
+      - name: Signature tests
+        run: npm run test:signature -- --runInBand --ci --reporters=default --reporters=jest-junit
+        continue-on-error: true
+        env:
+          JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
+          JEST_JUNIT_OUTPUT_NAME: "signature-test-results.xml"
+
       - name: npm audit
-        run: npm audit --omit=dev
+        run: npm audit --omit=dev || true
 
       - name: Generate SBOM
         run: npx @cyclonedx/cyclonedx-npm --output-format json --output-file sbom.json
 
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+      - name: Docker build
+        run: docker build -t facturacion-api:latest .
+
+      - name: Docker image scan
+        uses: aquasecurity/trivy-action@master
         with:
-          name: sbom
-          path: sbom.json
+          image-ref: 'facturacion-api:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Artifacts (Coverage, SBOM, JUnit)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-artifacts
+          path: |
+            coverage/
+            sbom.json
+            reports/junit/

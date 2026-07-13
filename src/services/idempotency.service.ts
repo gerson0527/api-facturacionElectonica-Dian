@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Invoice } from '@/database/entities';
+import { Injectable, Logger } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { Invoice } from "@/database/entities";
 
 @Injectable()
 export class IdempotencyService {
@@ -17,7 +17,9 @@ export class IdempotencyService {
   }
 
   async exists(key: string): Promise<boolean> {
-    const count = await this.invoiceRepo.count({ where: { idempotencyKey: key } });
+    const count = await this.invoiceRepo.count({
+      where: { idempotencyKey: key },
+    });
     return count > 0;
   }
 }

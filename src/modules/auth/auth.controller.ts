@@ -1,8 +1,8 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBody } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
-import { AuthService } from './auth.service';
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { Controller, Post, Body, HttpCode, HttpStatus } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiBody } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
+import { AuthService } from "./auth.service";
+import { IsEmail, IsString, MinLength } from "class-validator";
 
 export class LoginDto {
   @IsEmail()
@@ -36,44 +36,44 @@ export class CreateUserDto {
   role: string;
 }
 
-@ApiTags('Auth')
-@Controller('auth')
+@ApiTags("Auth")
+@Controller("auth")
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('login')
+  @Post("login")
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({ summary: 'Iniciar sesión' })
+  @ApiOperation({ summary: "Iniciar sesión" })
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto.email, dto.password);
   }
 
-  @Post('refresh')
+  @Post("refresh")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refrescar token' })
+  @ApiOperation({ summary: "Refrescar token" })
   async refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto.refreshToken);
   }
 
-  @Post('logout')
+  @Post("logout")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cerrar sesión' })
+  @ApiOperation({ summary: "Cerrar sesión" })
   async logout(@Body() dto: RefreshDto) {
     await this.authService.logout(dto.refreshToken);
-    return { message: 'Sesión cerrada exitosamente' };
+    return { message: "Sesión cerrada exitosamente" };
   }
 
-  @Post('revoke-all')
+  @Post("revoke-all")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Revocar todos los tokens de un usuario (admin)' })
-  async revokeAll(@Body('userId') userId: string) {
+  @ApiOperation({ summary: "Revocar todos los tokens de un usuario (admin)" })
+  async revokeAll(@Body("userId") userId: string) {
     await this.authService.revokeAllUserTokens(userId);
-    return { message: 'Tokens revocados exitosamente' };
+    return { message: "Tokens revocados exitosamente" };
   }
 
-  @Post('users')
-  @ApiOperation({ summary: 'Crear usuario' })
+  @Post("users")
+  @ApiOperation({ summary: "Crear usuario" })
   async createUser(@Body() dto: CreateUserDto) {
     return this.authService.createUser(
       dto.tenantId,

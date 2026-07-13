@@ -1,7 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 export class InitialMigration1710000000000 implements MigrationInterface {
-  name = 'InitialMigration1710000000000';
+  name = "InitialMigration1710000000000";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Enable uuid-ossp extension
@@ -246,17 +246,39 @@ export class InitialMigration1710000000000 implements MigrationInterface {
     `);
 
     // Indexes
-    await queryRunner.query(`CREATE INDEX idx_users_tenant ON users(tenant_id)`);
-    await queryRunner.query(`CREATE INDEX idx_invoices_tenant ON invoices(tenant_id)`);
-    await queryRunner.query(`CREATE INDEX idx_invoices_status ON invoices(status)`);
-    await queryRunner.query(`CREATE INDEX idx_invoice_lines_invoice ON invoice_lines(invoice_id)`);
-    await queryRunner.query(`CREATE INDEX idx_tax_totals_invoice ON tax_totals(invoice_id)`);
-    await queryRunner.query(`CREATE INDEX idx_dian_submissions_invoice ON dian_submissions(invoice_id)`);
-    await queryRunner.query(`CREATE INDEX idx_credit_notes_invoice ON credit_notes(invoice_id)`);
-    await queryRunner.query(`CREATE INDEX idx_debit_notes_invoice ON debit_notes(invoice_id)`);
-    await queryRunner.query(`CREATE INDEX idx_audit_events_tenant ON audit_events(tenant_id, entity_type, created_at)`);
-    await queryRunner.query(`CREATE INDEX idx_customers_tenant ON customers(tenant_id)`);
-    await queryRunner.query(`CREATE INDEX idx_numbering_ranges_tenant ON numbering_ranges(tenant_id)`);
+    await queryRunner.query(
+      `CREATE INDEX idx_users_tenant ON users(tenant_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_invoices_tenant ON invoices(tenant_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_invoices_status ON invoices(status)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_invoice_lines_invoice ON invoice_lines(invoice_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_tax_totals_invoice ON tax_totals(invoice_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_dian_submissions_invoice ON dian_submissions(invoice_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_credit_notes_invoice ON credit_notes(invoice_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_debit_notes_invoice ON debit_notes(invoice_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_audit_events_tenant ON audit_events(tenant_id, entity_type, created_at)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_customers_tenant ON customers(tenant_id)`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX idx_numbering_ranges_tenant ON numbering_ranges(tenant_id)`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
@@ -269,8 +291,12 @@ export class InitialMigration1710000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "invoices" CASCADE`);
     await queryRunner.query(`DROP TABLE IF EXISTS "customers" CASCADE`);
     await queryRunner.query(`DROP TABLE IF EXISTS "numbering_ranges" CASCADE`);
-    await queryRunner.query(`DROP TABLE IF EXISTS "digital_certificates" CASCADE`);
-    await queryRunner.query(`DROP TABLE IF EXISTS "dian_software_credentials" CASCADE`);
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "digital_certificates" CASCADE`,
+    );
+    await queryRunner.query(
+      `DROP TABLE IF EXISTS "dian_software_credentials" CASCADE`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS "users" CASCADE`);
     await queryRunner.query(`DROP TABLE IF EXISTS "tenants" CASCADE`);
   }

@@ -1,35 +1,41 @@
 import {
-  Injectable, NotFoundException, ConflictException, Logger,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { ConfigService } from '@nestjs/config';
-import { Invoice } from '@/database/entities/invoice.entity';
-import { InvoiceLine } from '@/database/entities/invoice-line.entity';
-import { TaxTotal } from '@/database/entities/tax-total.entity';
-import { NumberingRange } from '@/database/entities/numbering-range.entity';
-import { DianSoftwareCredential } from '@/database/entities/dian-software-credential.entity';
-import { DigitalCertificate } from '@/database/entities/digital-certificate.entity';
-import { DianSubmission } from '@/database/entities/dian-submission.entity';
-import { Customer } from '@/database/entities/customer.entity';
-import { Tenant } from '@/database/entities/tenant.entity';
-import { CufeService } from '@/services/cufe.service';
-import { XmlBuilderService, InvoiceXmlData } from '@/services/xml-builder.service';
-import { SigningService } from '@/services/signing.service';
-import { DianSoapClient } from '@/services/dian-soap.client';
-import { PdfQrService } from '@/services/pdf-qr.service';
-import { IdempotencyService } from '@/services/idempotency.service';
-import { ValidationsService } from '@/services/validations.service';
-import { SoftwareCredentialsService } from '../software-credentials/software-credentials.service';
-import { CertificatesService } from '../certificates/certificates.service';
-import { NumberingRangesService } from '../numbering-ranges/numbering-ranges.service';
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import archiver from 'archiver';
-import { createWriteStream } from 'fs';
-import { v4 as uuidv4 } from 'uuid';
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+} from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, DataSource } from "typeorm";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
+import { ConfigService } from "@nestjs/config";
+import { Invoice } from "@/database/entities/invoice.entity";
+import { InvoiceLine } from "@/database/entities/invoice-line.entity";
+import { TaxTotal } from "@/database/entities/tax-total.entity";
+import { NumberingRange } from "@/database/entities/numbering-range.entity";
+import { DianSoftwareCredential } from "@/database/entities/dian-software-credential.entity";
+import { DigitalCertificate } from "@/database/entities/digital-certificate.entity";
+import { DianSubmission } from "@/database/entities/dian-submission.entity";
+import { Customer } from "@/database/entities/customer.entity";
+import { Tenant } from "@/database/entities/tenant.entity";
+import { CufeService } from "@/services/cufe.service";
+import {
+  XmlBuilderService,
+  InvoiceXmlData,
+} from "@/services/xml-builder.service";
+import { SigningService } from "@/services/signing.service";
+import { DianSoapClient } from "@/services/dian-soap.client";
+import { PdfQrService } from "@/services/pdf-qr.service";
+import { IdempotencyService } from "@/services/idempotency.service";
+import { ValidationsService } from "@/services/validations.service";
+import { SoftwareCredentialsService } from "../software-credentials/software-credentials.service";
+import { CertificatesService } from "../certificates/certificates.service";
+import { NumberingRangesService } from "../numbering-ranges/numbering-ranges.service";
+import * as fs from "fs/promises";
+import * as path from "path";
+import archiver from "archiver";
+import { createWriteStream } from "fs";
+import { v4 as uuidv4 } from "uuid";
 
 export interface CreateInvoiceInput {
   invoiceType?: string;
@@ -83,7 +89,7 @@ export class InvoicesService {
     private readonly customerRepo: Repository<Customer>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
-    @InjectQueue('dian-submission') private submissionQueue: Queue,
+    @InjectQueue("dian-submission") private submissionQueue: Queue,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly cufeService: CufeService,
@@ -97,52 +103,71 @@ export class InvoicesService {
     private readonly numberingRangesService: NumberingRangesService,
     private readonly validationsService: ValidationsService,
   ) {
-    this.storagePath = this.configService.get<string>('STORAGE_PATH') || './storage';
+    this.storagePath =
+      this.configService.get<string>("STORAGE_PATH") || "./storage";
   }
 
-  async create(tenantId: string, input: CreateInvoiceInput, actorId: string): Promise<Invoice> {
+  async create(
+    tenantId: string,
+    input: CreateInvoiceInput,
+    actorId: string,
+  ): Promise<Invoice> {
     // Idempotency check
-    const existing = await this.idempotencyService.findExisting(input.idempotencyKey);
+    const existing = await this.idempotencyService.findExisting(
+      input.idempotencyKey,
+    );
     if (existing) {
       return existing;
     }
 
     // Validate customer
-    const customer = await this.customerRepo.findOne({ where: { id: input.customerId, tenantId } });
+    const customer = await this.customerRepo.findOne({
+      where: { id: input.customerId, tenantId },
+    });
     if (!customer) {
-      throw new NotFoundException('Cliente no encontrado');
+      throw new NotFoundException("Cliente no encontrado");
     }
 
     // Get tenant info
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!tenant) {
-      throw new NotFoundException('Tenant no encontrado');
+      throw new NotFoundException("Tenant no encontrado");
     }
 
     // Get software credentials
-    const softwareCreds = await this.softwareCredRepo.findOne({ where: { tenantId } });
+    const softwareCreds = await this.softwareCredRepo.findOne({
+      where: { tenantId },
+    });
     if (!softwareCreds) {
-      throw new NotFoundException('Credenciales de software DIAN no encontradas');
+      throw new NotFoundException(
+        "Credenciales de software DIAN no encontradas",
+      );
     }
-    const softwarePin = await this.softwareCredentialsService.decryptPin(softwareCreds);
+    const softwarePin =
+      await this.softwareCredentialsService.decryptPin(softwareCreds);
 
     // Get active certificate
-    const cert = await this.certRepo.findOne({ where: { tenantId, isActive: true } });
+    const cert = await this.certRepo.findOne({
+      where: { tenantId, isActive: true },
+    });
     if (!cert) {
-      throw new NotFoundException('Certificado digital no encontrado');
+      throw new NotFoundException("Certificado digital no encontrado");
     }
 
     // Business validations
-    const subtotal = input.lines.reduce((sum, l) => sum + (l.lineExtensionAmount || (l.quantity * l.unitPrice)), 0);
+    const subtotal = input.lines.reduce(
+      (sum, l) => sum + (l.lineExtensionAmount || l.quantity * l.unitPrice),
+      0,
+    );
     const totalTax = input.taxTotals.reduce((sum, t) => sum + t.taxAmount, 0);
     const totalAmount = subtotal + totalTax;
 
     this.validationsService.validateInvoice({
       lines: input.lines.map((l) => ({
-        lineExtensionAmount: l.lineExtensionAmount || (l.quantity * l.unitPrice),
+        lineExtensionAmount: l.lineExtensionAmount || l.quantity * l.unitPrice,
         quantity: l.quantity,
         unitPrice: l.unitPrice,
-        taxCode: l.taxCode || '01',
+        taxCode: l.taxCode || "01",
         taxPercent: l.taxPercent || 0,
         taxAmount: l.taxAmount || 0,
       })),
@@ -153,31 +178,35 @@ export class InvoicesService {
       customerDocumentType: customer.documentType,
       customerDocumentNumber: customer.documentNumber,
       issueDate: input.issueDate,
-      paymentFormCode: input.paymentFormCode || '1',
+      paymentFormCode: input.paymentFormCode || "1",
       prefix: input.prefix,
     });
 
     // Reserve consecutive number
-    const { number } = await this.numberingRangesService.reserveNextNumber(tenantId, input.prefix);
+    const { number } = await this.numberingRangesService.reserveNextNumber(
+      tenantId,
+      input.prefix,
+    );
 
     // Generate CUFE
     const issueDate = new Date(input.issueDate);
     const cufeInput = {
       numFac: number,
-      fecFac: issueDate.toISOString().split('T')[0],
-      horFac: issueDate.toISOString().split('T')[1]?.split('.')[0] || '00:00:00',
+      fecFac: issueDate.toISOString().split("T")[0],
+      horFac:
+        issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
       valBruto: subtotal.toFixed(2),
       valIva: totalTax.toFixed(2),
-      valAdicional: '0.00',
+      valAdicional: "0.00",
       valTotal: totalAmount.toFixed(2),
       nitEmisor: tenant.nit,
       dvEmisor: tenant.dv,
-      tipoDocEmisor: tenant.documentType || '31',
+      tipoDocEmisor: tenant.documentType || "31",
       tipoDocAdquirente: customer.documentType,
       numDocAdquirente: customer.documentNumber,
-      dvAdquirente: customer.dv || '',
+      dvAdquirente: customer.dv || "",
       softwarePin,
-      ambiente: tenant.environment === 'produccion' ? '2' : '1',
+      ambiente: tenant.environment === "produccion" ? "2" : "1",
     };
     const cufe = this.cufeService.generate(cufeInput);
 
@@ -188,9 +217,9 @@ export class InvoicesService {
     const invoice = this.invoiceRepo.create({
       tenantId,
       number,
-      invoiceType: input.invoiceType || '01',
-      paymentFormCode: input.paymentFormCode || '1',
-      paymentMethodCode: input.paymentMethodCode || '10',
+      invoiceType: input.invoiceType || "01",
+      paymentFormCode: input.paymentFormCode || "1",
+      paymentMethodCode: input.paymentMethodCode || "10",
       issueDate,
       dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
       customerId: customer.id,
@@ -200,7 +229,7 @@ export class InvoicesService {
       subtotal,
       totalTax,
       totalAmount,
-      status: 'draft',
+      status: "draft",
       cufe,
       qrCode,
       idempotencyKey: input.idempotencyKey,
@@ -215,10 +244,12 @@ export class InvoicesService {
         lineNumber: lineInput.lineNumber,
         description: lineInput.description,
         quantity: lineInput.quantity,
-        unitCode: lineInput.unitCode || '94',
+        unitCode: lineInput.unitCode || "94",
         unitPrice: lineInput.unitPrice,
-        lineExtensionAmount: lineInput.lineExtensionAmount || (lineInput.quantity * lineInput.unitPrice),
-        taxCode: lineInput.taxCode || '01',
+        lineExtensionAmount:
+          lineInput.lineExtensionAmount ||
+          lineInput.quantity * lineInput.unitPrice,
+        taxCode: lineInput.taxCode || "01",
         taxPercent: lineInput.taxPercent || 19,
         taxAmount: lineInput.taxAmount || 0,
       });
@@ -241,39 +272,40 @@ export class InvoicesService {
     // Generate XML
     const xmlData: InvoiceXmlData = {
       number,
-      issueDate: issueDate.toISOString().split('T')[0],
-      issueTime: issueDate.toISOString().split('T')[1]?.split('.')[0] || '00:00:00',
-      invoiceType: input.invoiceType || '01',
-      paymentFormCode: input.paymentFormCode || '1',
-      paymentMethodCode: input.paymentMethodCode || '10',
-      currencyCode: 'COP',
+      issueDate: issueDate.toISOString().split("T")[0],
+      issueTime:
+        issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
+      invoiceType: input.invoiceType || "01",
+      paymentFormCode: input.paymentFormCode || "1",
+      paymentMethodCode: input.paymentMethodCode || "10",
+      currencyCode: "COP",
       dueDate: input.dueDate,
       cufe,
       qrCode,
       softwareId: softwareCreds.softwareId,
       softwarePin,
       environment: tenant.environment,
-      testSetId: softwareCreds.testSetId || '',
+      testSetId: softwareCreds.testSetId || "",
       issuer: {
         nit: tenant.nit,
         dv: tenant.dv,
         name: tenant.name,
-        address: tenant.address || 'N/A',
-        phone: tenant.phone || 'N/A',
-        email: tenant.email || 'N/A',
-        municipalityCode: '11001',
-        fiscalResponsibilities: ['O-99'],
+        address: tenant.address || "N/A",
+        phone: tenant.phone || "N/A",
+        email: tenant.email || "N/A",
+        municipalityCode: "11001",
+        fiscalResponsibilities: ["O-99"],
       },
       customer: {
         documentType: customer.documentType,
         documentNumber: customer.documentNumber,
         dv: customer.dv,
         name: customer.name,
-        address: customer.address || 'N/A',
-        phone: customer.phone || 'N/A',
-        email: customer.email || 'N/A',
-        municipalityCode: customer.municipalityCode || '11001',
-        fiscalResponsibilities: customer.fiscalResponsibilities || ['O-99'],
+        address: customer.address || "N/A",
+        phone: customer.phone || "N/A",
+        email: customer.email || "N/A",
+        municipalityCode: customer.municipalityCode || "11001",
+        fiscalResponsibilities: customer.fiscalResponsibilities || ["O-99"],
       },
       taxTotals: input.taxTotals,
       subtotal,
@@ -283,10 +315,10 @@ export class InvoicesService {
         lineNumber: l.lineNumber,
         description: l.description,
         quantity: l.quantity,
-        unitCode: l.unitCode || '94',
+        unitCode: l.unitCode || "94",
         unitPrice: l.unitPrice,
-        lineExtensionAmount: l.lineExtensionAmount || (l.quantity * l.unitPrice),
-        taxCode: l.taxCode || '01',
+        lineExtensionAmount: l.lineExtensionAmount || l.quantity * l.unitPrice,
+        taxCode: l.taxCode || "01",
         taxPercent: l.taxPercent || 19,
         taxAmount: l.taxAmount || 0,
       })),
@@ -298,46 +330,59 @@ export class InvoicesService {
     await this.xmlBuilderService.validateAgainstXsd(xmlContent);
 
     // Save unsigned XML
-    const xmlDir = path.join(this.storagePath, 'xml', tenantId);
+    const xmlDir = path.join(this.storagePath, "xml", tenantId);
     await fs.mkdir(xmlDir, { recursive: true });
-    const xmlFileName = `${number.replace(/\s/g, '_')}.xml`;
+    const xmlFileName = `${number.replace(/\s/g, "_")}.xml`;
     const xmlPath = path.join(xmlDir, xmlFileName);
-    await fs.writeFile(xmlPath, xmlContent, 'utf-8');
+    await fs.writeFile(xmlPath, xmlContent, "utf-8");
 
     // Sign XML
-    const { pfxBuffer, password } = await this.certificatesService.getDecryptedPfx(cert.id, tenantId);
-    const { signedXml } = await this.signingService.signXmlFromBuffer(xmlContent, pfxBuffer, password);
+    const { pfxBuffer, password } =
+      await this.certificatesService.getDecryptedPfx(cert.id, tenantId);
+    const { signedXml } = await this.signingService.signXmlFromBuffer(
+      xmlContent,
+      pfxBuffer,
+      password,
+    );
 
     // Save signed XML
-    const signedXmlFileName = `signed_${number.replace(/\s/g, '_')}.xml`;
+    const signedXmlFileName = `signed_${number.replace(/\s/g, "_")}.xml`;
     const signedXmlPath = path.join(xmlDir, signedXmlFileName);
-    await fs.writeFile(signedXmlPath, signedXml, 'utf-8');
+    await fs.writeFile(signedXmlPath, signedXml, "utf-8");
 
     // Create ZIP for DIAN
-    const zipDir = path.join(this.storagePath, 'dian', tenantId);
+    const zipDir = path.join(this.storagePath, "dian", tenantId);
     await fs.mkdir(zipDir, { recursive: true });
-    const zipFileName = `${number.replace(/\s/g, '_')}.zip`;
+    const zipFileName = `${number.replace(/\s/g, "_")}.zip`;
     const zipPath = path.join(zipDir, zipFileName);
 
     await new Promise<void>((resolve, reject) => {
       const output = createWriteStream(zipPath);
-      const archive = archiver('zip', { zlib: { level: 9 } });
-      output.on('close', () => resolve());
-      archive.on('error', reject);
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      output.on("close", () => resolve());
+      archive.on("error", reject);
       archive.pipe(output);
-      archive.append(signedXml, { name: 'fa.xml' });
+      archive.append(signedXml, { name: "fa.xml" });
       archive.finalize();
     });
 
     // Generate PDF
-    const pdfDir = path.join(this.storagePath, 'pdf', tenantId);
+    const pdfDir = path.join(this.storagePath, "pdf", tenantId);
     await fs.mkdir(pdfDir, { recursive: true });
-    const pdfFileName = `${number.replace(/\s/g, '_')}.pdf`;
+    const pdfFileName = `${number.replace(/\s/g, "_")}.pdf`;
     const pdfPath = path.join(pdfDir, pdfFileName);
     await this.pdfQrService.generatePdf(
-      number, customer.name, customer.documentNumber,
-      input.issueDate, subtotal, totalTax, totalAmount,
-      cufe, tenant.name, tenant.nit, pdfPath,
+      number,
+      customer.name,
+      customer.documentNumber,
+      input.issueDate,
+      subtotal,
+      totalTax,
+      totalAmount,
+      cufe,
+      tenant.name,
+      tenant.nit,
+      pdfPath,
     );
 
     // Update invoice with paths
@@ -345,44 +390,52 @@ export class InvoicesService {
       xmlPath,
       signedXmlPath,
       pdfPath,
-      status: 'pending',
+      status: "pending",
     });
 
     // Create submission record
     const submission = this.submissionRepo.create({
       tenantId,
       invoiceId: savedInvoice.id,
-      documentType: 'invoice',
+      documentType: "invoice",
       attemptNumber: 1,
-      status: 'pending',
+      status: "pending",
       requestZipPath: zipPath,
     });
     await this.submissionRepo.save(submission);
 
     // Enqueue BullMQ job
-    await this.submissionQueue.add('dian-submission', {
-      submissionId: submission.id,
-      invoiceId: savedInvoice.id,
-      tenantId,
-      zipPath,
-    }, {
-      attempts: this.configService.get<number>('QUEUE_SUBMISSION_MAX_ATTEMPTS') || 5,
-      backoff: { type: 'exponential', delay: 30000 },
-    });
+    await this.submissionQueue.add(
+      "dian-submission",
+      {
+        submissionId: submission.id,
+        invoiceId: savedInvoice.id,
+        tenantId,
+        zipPath,
+      },
+      {
+        attempts:
+          this.configService.get<number>("QUEUE_SUBMISSION_MAX_ATTEMPTS") || 5,
+        backoff: { type: "exponential", delay: 30000 },
+      },
+    );
 
-    return this.invoiceRepo.findOne({ where: { id: savedInvoice.id } }) as Promise<Invoice>;
+    return this.invoiceRepo.findOne({
+      where: { id: savedInvoice.id },
+    }) as Promise<Invoice>;
   }
 
   async findAll(
     tenantId: string,
     options: { limit?: number; offset?: number; status?: string },
   ): Promise<{ data: Invoice[]; total: number }> {
-    const query = this.invoiceRepo.createQueryBuilder('i')
-      .where('i.tenantId = :tenantId', { tenantId })
-      .orderBy('i.createdAt', 'DESC');
+    const query = this.invoiceRepo
+      .createQueryBuilder("i")
+      .where("i.tenantId = :tenantId", { tenantId })
+      .orderBy("i.createdAt", "DESC");
 
     if (options.status) {
-      query.andWhere('i.status = :status', { status: options.status });
+      query.andWhere("i.status = :status", { status: options.status });
     }
 
     const [data, total] = await query
@@ -396,56 +449,66 @@ export class InvoicesService {
   async findOne(id: string, tenantId: string): Promise<Invoice> {
     const invoice = await this.invoiceRepo.findOne({ where: { id, tenantId } });
     if (!invoice) {
-      throw new NotFoundException('Factura no encontrada');
+      throw new NotFoundException("Factura no encontrada");
     }
     return invoice;
   }
 
-  async getDianStatus(id: string, tenantId: string): Promise<{ invoice: Invoice; submissions: DianSubmission[] }> {
+  async getDianStatus(
+    id: string,
+    tenantId: string,
+  ): Promise<{ invoice: Invoice; submissions: DianSubmission[] }> {
     const invoice = await this.findOne(id, tenantId);
     const submissions = await this.submissionRepo.find({
       where: { invoiceId: id, tenantId },
-      order: { attemptNumber: 'DESC' },
+      order: { attemptNumber: "DESC" },
     });
     return { invoice, submissions };
   }
 
   async retrySubmission(id: string, tenantId: string): Promise<Invoice> {
     const invoice = await this.findOne(id, tenantId);
-    if (invoice.status !== 'rejected') {
-      throw new ConflictException('Solo se pueden reintentar facturas rechazadas');
+    if (invoice.status !== "rejected") {
+      throw new ConflictException(
+        "Solo se pueden reintentar facturas rechazadas",
+      );
     }
 
     const submission = await this.submissionRepo.findOne({
       where: { invoiceId: id, tenantId },
-      order: { attemptNumber: 'DESC' },
+      order: { attemptNumber: "DESC" },
     });
     if (!submission || !submission.requestZipPath) {
-      throw new NotFoundException('No se encontró zip de envío');
+      throw new NotFoundException("No se encontró zip de envío");
     }
 
     const newAttempt = submission.attemptNumber + 1;
     const newSubmission = this.submissionRepo.create({
       tenantId,
       invoiceId: id,
-      documentType: 'invoice',
+      documentType: "invoice",
       attemptNumber: newAttempt,
-      status: 'pending',
+      status: "pending",
       requestZipPath: submission.requestZipPath,
     });
     await this.submissionRepo.save(newSubmission);
 
-    await this.invoiceRepo.update(id, { status: 'pending' });
+    await this.invoiceRepo.update(id, { status: "pending" });
 
-    await this.submissionQueue.add('dian-submission', {
-      submissionId: newSubmission.id,
-      invoiceId: id,
-      tenantId,
-      zipPath: submission.requestZipPath,
-    }, {
-      attempts: this.configService.get<number>('QUEUE_SUBMISSION_MAX_ATTEMPTS') || 5,
-      backoff: { type: 'exponential', delay: 30000 },
-    });
+    await this.submissionQueue.add(
+      "dian-submission",
+      {
+        submissionId: newSubmission.id,
+        invoiceId: id,
+        tenantId,
+        zipPath: submission.requestZipPath,
+      },
+      {
+        attempts:
+          this.configService.get<number>("QUEUE_SUBMISSION_MAX_ATTEMPTS") || 5,
+        backoff: { type: "exponential", delay: 30000 },
+      },
+    );
 
     return this.invoiceRepo.findOne({ where: { id } }) as Promise<Invoice>;
   }

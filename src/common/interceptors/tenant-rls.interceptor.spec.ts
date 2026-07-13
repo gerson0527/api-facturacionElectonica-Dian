@@ -1,21 +1,21 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { TenantRlsInterceptor } from './tenant-rls.interceptor';
-import { TenantRlsService } from '../database/tenant-rls.service';
-import { getDataSourceToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
-import { of } from 'rxjs';
+import { Test, TestingModule } from "@nestjs/testing";
+import { TenantRlsInterceptor } from "./tenant-rls.interceptor";
+import { TenantRlsService } from "../database/tenant-rls.service";
+import { getDataSourceToken } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
+import { of } from "rxjs";
 
-jest.mock('../context/tenant-context', () => ({
+jest.mock("../context/tenant-context", () => ({
   tenantContext: { run: jest.fn(), getStore: jest.fn() },
   getTenantContext: jest.fn(),
   TenantContextData: {},
 }));
 
-const { getTenantContext } = jest.requireMock('../context/tenant-context') as {
+const { getTenantContext } = jest.requireMock("../context/tenant-context") as {
   getTenantContext: jest.Mock;
 };
 
-describe('TenantRlsInterceptor', () => {
+describe("TenantRlsInterceptor", () => {
   let interceptor: TenantRlsInterceptor;
   let rlsService: TenantRlsService;
 
@@ -45,28 +45,28 @@ describe('TenantRlsInterceptor', () => {
     jest.clearAllMocks();
   });
 
-  it('debe llamar a setSessionTenant con el tenantId del contexto', (done) => {
+  it("debe llamar a setSessionTenant con el tenantId del contexto", (done) => {
     (getTenantContext as jest.Mock).mockReturnValue({
-      tenantId: 'tenant-123',
-      userId: 'u1',
-      role: 'admin',
-      requestId: 'r1',
+      tenantId: "tenant-123",
+      userId: "u1",
+      role: "admin",
+      requestId: "r1",
     });
-    const setSpy = jest.spyOn(rlsService, 'setSessionTenant');
-    const next = { handle: () => of('done') };
+    const setSpy = jest.spyOn(rlsService, "setSessionTenant");
+    const next = { handle: () => of("done") };
 
     interceptor.intercept(mockContext, next).subscribe({
       complete: () => {
-        expect(setSpy).toHaveBeenCalledWith('tenant-123');
+        expect(setSpy).toHaveBeenCalledWith("tenant-123");
         done();
       },
     });
   });
 
-  it('debe omitir RLS si no hay tenant context', (done) => {
+  it("debe omitir RLS si no hay tenant context", (done) => {
     (getTenantContext as jest.Mock).mockReturnValue(undefined);
-    const setSpy = jest.spyOn(rlsService, 'setSessionTenant');
-    const next = { handle: () => of('done') };
+    const setSpy = jest.spyOn(rlsService, "setSessionTenant");
+    const next = { handle: () => of("done") };
 
     interceptor.intercept(mockContext, next).subscribe({
       complete: () => {

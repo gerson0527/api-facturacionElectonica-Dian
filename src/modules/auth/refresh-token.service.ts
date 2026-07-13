@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, IsNull } from 'typeorm';
-import { RefreshToken } from '@/database/entities/refresh-token.entity';
+import { Injectable, Logger } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository, LessThan, IsNull } from "typeorm";
+import { RefreshToken } from "@/database/entities/refresh-token.entity";
 
 @Injectable()
 export class RefreshTokenService {
@@ -15,7 +15,7 @@ export class RefreshTokenService {
   async store(jti: string, userId: string, tenantId: string): Promise<void> {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const token = this.tokenRepo.create({ jti, userId, tenantId, expiresAt });
-    await this.tokenRepo.upsert(token, ['jti']);
+    await this.tokenRepo.upsert(token, ["jti"]);
   }
 
   async consume(jti: string): Promise<boolean> {
@@ -40,7 +40,9 @@ export class RefreshTokenService {
   }
 
   async revokeAllForUser(userId: string): Promise<void> {
-    const tokens = await this.tokenRepo.find({ where: { userId, consumedAt: IsNull(), revokedAt: IsNull() } });
+    const tokens = await this.tokenRepo.find({
+      where: { userId, consumedAt: IsNull(), revokedAt: IsNull() },
+    });
     for (const t of tokens) {
       t.revokedAt = new Date();
     }
@@ -48,12 +50,16 @@ export class RefreshTokenService {
   }
 
   private async revokeFamily(userId: string): Promise<void> {
-    this.logger.warn(`Revocando familia de tokens por posible robo: userId=${userId}`);
+    this.logger.warn(
+      `Revocando familia de tokens por posible robo: userId=${userId}`,
+    );
     await this.revokeAllForUser(userId);
   }
 
   async cleanExpired(): Promise<number> {
-    const result = await this.tokenRepo.delete({ expiresAt: LessThan(new Date()) });
+    const result = await this.tokenRepo.delete({
+      expiresAt: LessThan(new Date()),
+    });
     return result.affected || 0;
   }
 }

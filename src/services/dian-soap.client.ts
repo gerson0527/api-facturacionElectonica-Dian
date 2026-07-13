@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import axios from 'axios';
-import * as https from 'https';
+import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import axios from "axios";
+import * as https from "https";
 
 export interface SendBillResponse {
   TrackId: string;
@@ -22,17 +22,21 @@ export class DianSoapClient {
   constructor(private configService: ConfigService) {}
 
   private getBaseUrl(): string {
-    const env = this.configService.get<string>('DIAN_ENVIRONMENT') || 'habilitacion';
-    return env === 'produccion'
-      ? this.configService.get<string>('DIAN_PRODUCCION_URL')!
-      : this.configService.get<string>('DIAN_HABILITACION_URL')!;
+    const env =
+      this.configService.get<string>("DIAN_ENVIRONMENT") || "habilitacion";
+    return env === "produccion"
+      ? this.configService.get<string>("DIAN_PRODUCCION_URL")!
+      : this.configService.get<string>("DIAN_HABILITACION_URL")!;
   }
 
   private getSoapAction(operation: string): string {
     return `http://wcf.dian.colombia/IWcfDianCustomerServices/${operation}`;
   }
 
-  async sendBillAsync(fileName: string, contentFileBase64: string): Promise<SendBillResponse> {
+  async sendBillAsync(
+    fileName: string,
+    contentFileBase64: string,
+  ): Promise<SendBillResponse> {
     const url = this.getBaseUrl();
     const soapBody = `
       <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
@@ -46,7 +50,7 @@ export class DianSoapClient {
         </soap:Body>
       </soap:Envelope>`;
 
-    return this.callSoap(url, 'SendBillAsync', soapBody);
+    return this.callSoap(url, "SendBillAsync", soapBody);
   }
 
   async getStatus(trackId: string): Promise<GetStatusResponse> {
@@ -62,10 +66,12 @@ export class DianSoapClient {
         </soap:Body>
       </soap:Envelope>`;
 
-    return this.callSoap(url, 'GetStatus', soapBody);
+    return this.callSoap(url, "GetStatus", soapBody);
   }
 
-  async getStatusZip(trackZipBase64: string): Promise<{ StatusCode: string; StatusMessage: string; XmlBytes: string }> {
+  async getStatusZip(
+    trackZipBase64: string,
+  ): Promise<{ StatusCode: string; StatusMessage: string; XmlBytes: string }> {
     const url = this.getBaseUrl();
     const soapBody = `
       <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
@@ -79,15 +85,26 @@ export class DianSoapClient {
       </soap:Envelope>`;
 
     try {
-      const response = await this.makeSoapRequest(url, 'GetStatusZip', soapBody);
+      const response = await this.makeSoapRequest(
+        url,
+        "GetStatusZip",
+        soapBody,
+      );
       return this.parseGetStatusZipResponse(response);
     } catch (err) {
       this.logger.error(`GetStatusZip error: ${(err as Error).message}`);
-      return { StatusCode: '99', StatusMessage: (err as Error).message, XmlBytes: '' };
+      return {
+        StatusCode: "99",
+        StatusMessage: (err as Error).message,
+        XmlBytes: "",
+      };
     }
   }
 
-  async getNumberingRange(accountId: string, accountCode: string): Promise<any[]> {
+  async getNumberingRange(
+    accountId: string,
+    accountCode: string,
+  ): Promise<any[]> {
     const url = this.getBaseUrl();
     const soapBody = `
       <soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope"
@@ -101,23 +118,40 @@ export class DianSoapClient {
         </soap:Body>
       </soap:Envelope>`;
 
-    const response = await this.makeSoapRequest(url, 'GetNumberingRange', soapBody);
+    const response = await this.makeSoapRequest(
+      url,
+      "GetNumberingRange",
+      soapBody,
+    );
     return this.parseGetNumberingRangeResponse(response);
   }
 
-  private async callSoap(url: string, operation: string, body: string): Promise<any> {
+  private async callSoap(
+    url: string,
+    operation: string,
+    body: string,
+  ): Promise<any> {
     const response = await this.makeSoapRequest(url, operation, body);
     return this.parseSoapResponse(response, operation);
   }
 
-  private async makeSoapRequest(url: string, operation: string, body: string): Promise<string> {
+  private async makeSoapRequest(
+    url: string,
+    operation: string,
+    body: string,
+  ): Promise<string> {
     const agent = new https.Agent({ rejectUnauthorized: true });
-    const connectionTimeout = this.configService.get<number>('DIAN_TIMEOUT_CONNECTION') || 15000;
-    const readTimeout = this.configService.get<number>('DIAN_TIMEOUT_READ') || 60000;
+    const connectionTimeout =
+      this.configService.get<number>("DIAN_TIMEOUT_CONNECTION") || 15000;
+    const readTimeout =
+      this.configService.get<number>("DIAN_TIMEOUT_READ") || 60000;
     const response = await axios.post(url, body, {
       headers: {
-        'Content-Type': 'application/soap+xml;charset=UTF-8;action="' + this.getSoapAction(operation) + '"',
-        'SOAPAction': this.getSoapAction(operation),
+        "Content-Type":
+          'application/soap+xml;charset=UTF-8;action="' +
+          this.getSoapAction(operation) +
+          '"',
+        SOAPAction: this.getSoapAction(operation),
       },
       httpsAgent: agent,
       timeout: readTimeout,
@@ -132,36 +166,43 @@ export class DianSoapClient {
     const extractTag = (tag: string): string => {
       const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`);
       const match = xml.match(regex);
-      return match ? match[1].trim() : '';
+      return match ? match[1].trim() : "";
     };
 
-    if (operation === 'SendBillAsync') {
+    if (operation === "SendBillAsync") {
       return {
-        TrackId: extractTag('TrackId'),
-        StatusCode: extractTag('StatusCode') || extractTag('a:StatusCode'),
-        StatusDescription: extractTag('StatusDescription') || extractTag('a:StatusDescription'),
+        TrackId: extractTag("TrackId"),
+        StatusCode: extractTag("StatusCode") || extractTag("a:StatusCode"),
+        StatusDescription:
+          extractTag("StatusDescription") || extractTag("a:StatusDescription"),
       };
     }
-    if (operation === 'GetStatus') {
+    if (operation === "GetStatus") {
       return {
-        StatusCode: extractTag('StatusCode') || extractTag('a:StatusCode'),
-        StatusDescription: extractTag('StatusDescription') || extractTag('a:StatusDescription'),
-        XmlBytes: extractTag('XmlBytes') || extractTag('a:XmlBytes'),
+        StatusCode: extractTag("StatusCode") || extractTag("a:StatusCode"),
+        StatusDescription:
+          extractTag("StatusDescription") || extractTag("a:StatusDescription"),
+        XmlBytes: extractTag("XmlBytes") || extractTag("a:XmlBytes"),
       };
     }
     return {};
   }
 
-  private parseGetStatusZipResponse(xml: string): { StatusCode: string; StatusMessage: string; XmlBytes: string } {
+  private parseGetStatusZipResponse(xml: string): {
+    StatusCode: string;
+    StatusMessage: string;
+    XmlBytes: string;
+  } {
     const extractTag = (tag: string): string => {
       const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`);
       const match = xml.match(regex);
-      return match ? match[1].trim() : '';
+      return match ? match[1].trim() : "";
     };
     return {
-      StatusCode: extractTag('StatusCode') || extractTag('a:StatusCode'),
-      StatusMessage: extractTag('StatusMessage') || extractTag('a:StatusMessage'),
-      XmlBytes: extractTag('XmlBytes') || extractTag('a:XmlBytes'),
+      StatusCode: extractTag("StatusCode") || extractTag("a:StatusCode"),
+      StatusMessage:
+        extractTag("StatusMessage") || extractTag("a:StatusMessage"),
+      XmlBytes: extractTag("XmlBytes") || extractTag("a:XmlBytes"),
     };
   }
 
@@ -174,14 +215,14 @@ export class DianSoapClient {
       const extractTag = (tag: string) => {
         const r = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`);
         const m = rangeXml.match(r);
-        return m ? m[1].trim() : '';
+        return m ? m[1].trim() : "";
       };
       ranges.push({
-        Prefix: extractTag('Prefix'),
-        From: extractTag('From'),
-        To: extractTag('To'),
-        ValidFrom: extractTag('ValidFrom'),
-        ValidTo: extractTag('ValidTo'),
+        Prefix: extractTag("Prefix"),
+        From: extractTag("From"),
+        To: extractTag("To"),
+        ValidFrom: extractTag("ValidFrom"),
+        ValidTo: extractTag("ValidTo"),
       });
     }
     return ranges;

@@ -1,6 +1,6 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule as NestConfigModule } from '@nestjs/config';
-import { envValidationSchema } from './env.validation';
+import { Module } from "@nestjs/common";
+import { ConfigModule as NestConfigModule } from "@nestjs/config";
+import { envValidationSchema } from "./env.validation";
 
 @Module({
   imports: [
@@ -8,7 +8,7 @@ import { envValidationSchema } from './env.validation';
       isGlobal: true,
       validationSchema: envValidationSchema,
       validationOptions: { abortEarly: true, allowUnknown: true },
-      envFilePath: '.env',
+      envFilePath: ".env",
     }),
   ],
   exports: [NestConfigModule],

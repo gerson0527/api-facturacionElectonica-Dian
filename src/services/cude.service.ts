@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import * as crypto from 'crypto';
+import { Injectable } from "@nestjs/common";
+import * as crypto from "crypto";
 
 export interface CudeInput {
   numDoc: string;
@@ -42,8 +42,11 @@ export class CudeService {
       input.motivo,
     ];
 
-    const concatenated = fields.join('');
-    const hash = crypto.createHash('sha384').update(concatenated, 'utf8').digest('hex');
+    const concatenated = fields.join("");
+    const hash = crypto
+      .createHash("sha384")
+      .update(concatenated, "utf8")
+      .digest("hex");
     return hash.toUpperCase();
   }
 }

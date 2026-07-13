@@ -1,7 +1,7 @@
-import { Controller, Post, Get, Param, Body } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { TenantsService } from './tenants.service';
-import { IsString, IsOptional } from 'class-validator';
+import { Controller, Post, Get, Param, Body } from "@nestjs/common";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
+import { TenantsService } from "./tenants.service";
+import { IsString, IsOptional } from "class-validator";
 
 export class CreateTenantDto {
   @IsString()
@@ -31,20 +31,20 @@ export class CreateTenantDto {
   environment?: string;
 }
 
-@ApiTags('Tenants')
-@Controller('tenants')
+@ApiTags("Tenants")
+@Controller("tenants")
 export class TenantsController {
   constructor(private readonly tenantsService: TenantsService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Crear empresa (genera admin automáticamente)' })
+  @ApiOperation({ summary: "Crear empresa (genera admin automáticamente)" })
   async create(@Body() dto: CreateTenantDto) {
     return this.tenantsService.create(dto);
   }
 
-  @Get(':id')
-  @ApiOperation({ summary: 'Consultar empresa' })
-  async findById(@Param('id') id: string) {
+  @Get(":id")
+  @ApiOperation({ summary: "Consultar empresa" })
+  async findById(@Param("id") id: string) {
     return this.tenantsService.findById(id);
   }
 }

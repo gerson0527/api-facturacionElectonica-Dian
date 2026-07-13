@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { DianSoftwareCredential } from '@/database/entities/dian-software-credential.entity';
-import { Tenant } from '@/database/entities/tenant.entity';
-import { CryptoService } from '@/services/crypto.service';
+import { Injectable, NotFoundException } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { DianSoftwareCredential } from "@/database/entities/dian-software-credential.entity";
+import { Tenant } from "@/database/entities/tenant.entity";
+import { CryptoService } from "@/services/crypto.service";
 
 @Injectable()
 export class SoftwareCredentialsService {
@@ -21,18 +21,21 @@ export class SoftwareCredentialsService {
   ): Promise<DianSoftwareCredential> {
     const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
     if (!tenant) {
-      throw new NotFoundException('Tenant no encontrado');
+      throw new NotFoundException("Tenant no encontrado");
     }
 
     const aad = `software-pin:${tenantId}:${data.softwareId}`;
-    const encrypted = this.cryptoService.encryptWithIntegrity(data.softwarePin, aad);
+    const encrypted = this.cryptoService.encryptWithIntegrity(
+      data.softwarePin,
+      aad,
+    );
 
     const credential = this.credRepo.create({
       tenantId,
       softwareId: data.softwareId,
       softwarePinEncrypted: JSON.stringify(encrypted),
       testSetId: data.testSetId,
-      habilitacionStatus: 'pending',
+      habilitacionStatus: "pending",
     });
     return this.credRepo.save(credential);
   }
@@ -44,7 +47,7 @@ export class SoftwareCredentialsService {
   async findOne(id: string, tenantId: string): Promise<DianSoftwareCredential> {
     const cred = await this.credRepo.findOne({ where: { id, tenantId } });
     if (!cred) {
-      throw new NotFoundException('Credencial no encontrada');
+      throw new NotFoundException("Credencial no encontrada");
     }
     return cred;
   }

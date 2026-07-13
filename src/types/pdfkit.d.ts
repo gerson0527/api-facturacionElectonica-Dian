@@ -1,1 +1,1 @@
-declare module 'pdfkit';
+declare module "pdfkit";

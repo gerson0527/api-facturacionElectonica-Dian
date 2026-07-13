@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { Injectable, Logger } from "@nestjs/common";
+import { InjectDataSource } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
 
 @Injectable()
 export class TenantRlsService {
@@ -15,7 +15,9 @@ export class TenantRlsService {
         [tenantId],
       );
     } catch (err) {
-      this.logger.error(`Error setting app.tenant_id: ${(err as Error).message}`);
+      this.logger.error(
+        `Error setting app.tenant_id: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -25,7 +27,9 @@ export class TenantRlsService {
         `SELECT set_config('app.tenant_id', '', false)`,
       );
     } catch (err) {
-      this.logger.error(`Error clearing app.tenant_id: ${(err as Error).message}`);
+      this.logger.error(
+        `Error clearing app.tenant_id: ${(err as Error).message}`,
+      );
     }
   }
 }

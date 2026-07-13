@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { SecretsProvider } from './secrets-provider.interface';
+import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { SecretsProvider } from "./secrets-provider.interface";
 
 @Injectable()
 export class EnvSecretsProvider implements SecretsProvider {

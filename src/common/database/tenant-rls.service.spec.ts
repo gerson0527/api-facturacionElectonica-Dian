@@ -1,9 +1,9 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { TenantRlsService } from './tenant-rls.service';
-import { getDataSourceToken } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { Test, TestingModule } from "@nestjs/testing";
+import { TenantRlsService } from "./tenant-rls.service";
+import { getDataSourceToken } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
 
-describe('TenantRlsService', () => {
+describe("TenantRlsService", () => {
   let service: TenantRlsService;
   let mockQuery: jest.Mock;
 
@@ -21,23 +21,23 @@ describe('TenantRlsService', () => {
     service = module.get<TenantRlsService>(TenantRlsService);
   });
 
-  it('debe ejecutar set_config con el tenantId', async () => {
-    await service.setSessionTenant('abc-123');
+  it("debe ejecutar set_config con el tenantId", async () => {
+    await service.setSessionTenant("abc-123");
     expect(mockQuery).toHaveBeenCalledWith(
       `SELECT set_config('app.tenant_id', $1, false)`,
-      ['abc-123'],
+      ["abc-123"],
     );
   });
 
-  it('debe ejecutar set_config con string vacío para limpiar', async () => {
+  it("debe ejecutar set_config con string vacío para limpiar", async () => {
     await service.clearSessionTenant();
     expect(mockQuery).toHaveBeenCalledWith(
       `SELECT set_config('app.tenant_id', '', false)`,
     );
   });
 
-  it('no debe lanzar error si la consulta falla (solo log)', async () => {
-    mockQuery.mockRejectedValueOnce(new Error('connection lost'));
-    await expect(service.setSessionTenant('abc-123')).resolves.toBeUndefined();
+  it("no debe lanzar error si la consulta falla (solo log)", async () => {
+    mockQuery.mockRejectedValueOnce(new Error("connection lost"));
+    await expect(service.setSessionTenant("abc-123")).resolves.toBeUndefined();
   });
 });

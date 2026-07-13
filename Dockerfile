@@ -1,4 +1,4 @@
-FROM node:22-slim AS builder
+FROM node:22.18.0-slim AS builder
 
 RUN apt-get update && apt-get install -y \
   python3 make g++ libxml2-dev libxslt1-dev \
@@ -14,7 +14,7 @@ COPY src ./src
 
 RUN npm run build
 
-FROM node:22-slim AS runner
+FROM node:22.18.0-slim AS runner
 
 RUN apt-get update && apt-get install -y \
   libxml2-dev libxslt1-dev \

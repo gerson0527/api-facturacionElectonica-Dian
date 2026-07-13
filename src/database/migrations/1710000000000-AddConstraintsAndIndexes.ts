@@ -1,7 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from "typeorm";
 
 export class AddConstraintsAndIndexes1710000000000 implements MigrationInterface {
-  name = 'AddConstraintsAndIndexes1710000000000';
+  name = "AddConstraintsAndIndexes1710000000000";
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Unique idempotency per tenant
@@ -71,14 +71,28 @@ export class AddConstraintsAndIndexes1710000000000 implements MigrationInterface
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trg_prevent_audit_delete ON audit_events`);
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trg_prevent_audit_update ON audit_events`);
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trg_prevent_audit_delete ON audit_events`,
+    );
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trg_prevent_audit_update ON audit_events`,
+    );
     await queryRunner.query(`DROP FUNCTION IF EXISTS prevent_audit_mutations`);
-    await queryRunner.query(`DROP INDEX IF EXISTS ix_numbering_ranges_tenant_active`);
-    await queryRunner.query(`DROP INDEX IF EXISTS ix_customers_tenant_document`);
-    await queryRunner.query(`DROP INDEX IF EXISTS ix_dian_submissions_tenant_invoice_created`);
-    await queryRunner.query(`DROP INDEX IF EXISTS ix_invoices_tenant_status_issue_date`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS ix_numbering_ranges_tenant_active`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS ix_customers_tenant_document`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS ix_dian_submissions_tenant_invoice_created`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS ix_invoices_tenant_status_issue_date`,
+    );
     await queryRunner.query(`DROP INDEX IF EXISTS uq_invoices_tenant_number`);
-    await queryRunner.query(`ALTER TABLE invoices DROP CONSTRAINT IF EXISTS uq_invoices_tenant_idempotency`);
+    await queryRunner.query(
+      `ALTER TABLE invoices DROP CONSTRAINT IF EXISTS uq_invoices_tenant_idempotency`,
+    );
   }
 }

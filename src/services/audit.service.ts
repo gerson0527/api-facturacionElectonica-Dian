@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { AuditEvent } from '@/database/entities/audit-event.entity';
+import { Injectable, Logger } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { Repository } from "typeorm";
+import { AuditEvent } from "@/database/entities/audit-event.entity";
 
 export interface AuditLogInput {
   tenantId: string;
@@ -37,24 +37,34 @@ export class AuditService {
       });
       return await this.auditRepo.save(event);
     } catch (err) {
-      this.logger.error(`Error registrando auditoría: ${(err as Error).message}`);
+      this.logger.error(
+        `Error registrando auditoría: ${(err as Error).message}`,
+      );
       throw err;
     }
   }
 
   async findByTenant(
     tenantId: string,
-    options: { limit?: number; offset?: number; entityType?: string; actor?: string } = {},
+    options: {
+      limit?: number;
+      offset?: number;
+      entityType?: string;
+      actor?: string;
+    } = {},
   ): Promise<[AuditEvent[], number]> {
-    const query = this.auditRepo.createQueryBuilder('a')
-      .where('a.tenantId = :tenantId', { tenantId })
-      .orderBy('a.createdAt', 'DESC');
+    const query = this.auditRepo
+      .createQueryBuilder("a")
+      .where("a.tenantId = :tenantId", { tenantId })
+      .orderBy("a.createdAt", "DESC");
 
     if (options.entityType) {
-      query.andWhere('a.entityType = :entityType', { entityType: options.entityType });
+      query.andWhere("a.entityType = :entityType", {
+        entityType: options.entityType,
+      });
     }
     if (options.actor) {
-      query.andWhere('a.actor = :actor', { actor: options.actor });
+      query.andWhere("a.actor = :actor", { actor: options.actor });
     }
 
     query.skip(options.offset || 0).take(options.limit || 50);

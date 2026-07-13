@@ -1,7 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntitySubscriberInterface, InsertEvent, UpdateEvent, RemoveEvent } from 'typeorm';
-import { TenantEntity } from '@/database/entities/base.entity';
+import { Injectable } from "@nestjs/common";
+import { InjectDataSource } from "@nestjs/typeorm";
+import {
+  DataSource,
+  EntitySubscriberInterface,
+  InsertEvent,
+  UpdateEvent,
+  RemoveEvent,
+} from "typeorm";
+import { TenantEntity } from "@/database/entities/base.entity";
 
 @Injectable()
 export class AuditSubscriber implements EntitySubscriberInterface {

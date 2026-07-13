@@ -1,9 +1,9 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import request from 'supertest';
-import { AppModule } from '../src/app.module';
+import { Test, TestingModule } from "@nestjs/testing";
+import { INestApplication, ValidationPipe } from "@nestjs/common";
+import request from "supertest";
+import { AppModule } from "../src/app.module";
 
-describe('API Facturación Electrónica (e2e)', () => {
+describe("API Facturación Electrónica (e2e)", () => {
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -12,7 +12,9 @@ describe('API Facturación Electrónica (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, transform: true }),
+    );
     await app.init();
   });
 
@@ -20,34 +22,32 @@ describe('API Facturación Electrónica (e2e)', () => {
     await app.close();
   });
 
-  describe('Health / Status', () => {
-    it('GET /docs should return Swagger UI', () => {
-      return request(app.getHttpServer())
-        .get('/docs')
-        .expect(302);
+  describe("Health / Status", () => {
+    it("GET /docs should return Swagger UI", () => {
+      return request(app.getHttpServer()).get("/docs").expect(302);
     });
   });
 
-  describe('Auth', () => {
-    it('POST /v1/auth/login with invalid credentials should return 401', () => {
+  describe("Auth", () => {
+    it("POST /v1/auth/login with invalid credentials should return 401", () => {
       return request(app.getHttpServer())
-        .post('/v1/auth/login')
-        .send({ email: 'nonexistent@test.com', password: 'wrong' })
+        .post("/v1/auth/login")
+        .send({ email: "nonexistent@test.com", password: "wrong" })
         .expect(401);
     });
   });
 
-  describe('Tenants', () => {
-    it('POST /v1/tenants should create a tenant', () => {
+  describe("Tenants", () => {
+    it("POST /v1/tenants should create a tenant", () => {
       return request(app.getHttpServer())
-        .post('/v1/tenants')
+        .post("/v1/tenants")
         .send({
-          name: 'E2E Test Corp',
-          nit: '999999999',
-          dv: '0',
-          address: 'Test Address',
-          phone: '3000000000',
-          email: 'e2e@test.com',
+          name: "E2E Test Corp",
+          nit: "999999999",
+          dv: "0",
+          address: "Test Address",
+          phone: "3000000000",
+          email: "e2e@test.com",
         })
         .expect(201);
     });

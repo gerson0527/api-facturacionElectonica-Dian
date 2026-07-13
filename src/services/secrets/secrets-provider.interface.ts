@@ -3,4 +3,4 @@ export interface SecretsProvider {
   getVersion?(name: string): Promise<string>;
 }
 
-export const SECRETS_PROVIDER_TOKEN = 'SECRETS_PROVIDER';
+export const SECRETS_PROVIDER_TOKEN = "SECRETS_PROVIDER";

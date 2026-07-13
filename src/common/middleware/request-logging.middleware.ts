@@ -1,10 +1,10 @@
-import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
-import { Request, Response, NextFunction } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+import { Injectable, NestMiddleware, Logger } from "@nestjs/common";
+import { Request, Response, NextFunction } from "express";
+import { v4 as uuidv4 } from "uuid";
 
 @Injectable()
 export class RequestLoggingMiddleware implements NestMiddleware {
-  private readonly logger = new Logger('HTTP');
+  private readonly logger = new Logger("HTTP");
 
   use(req: Request, res: Response, next: NextFunction): void {
     const requestId = uuidv4().slice(0, 8);
@@ -12,10 +12,10 @@ export class RequestLoggingMiddleware implements NestMiddleware {
 
     const start = Date.now();
     const { method, originalUrl } = req;
-    const userAgent = req.get('user-agent') || '';
+    const userAgent = req.get("user-agent") || "";
     const ip = req.ip;
 
-    res.on('finish', () => {
+    res.on("finish", () => {
       const duration = Date.now() - start;
       const { statusCode } = res;
 

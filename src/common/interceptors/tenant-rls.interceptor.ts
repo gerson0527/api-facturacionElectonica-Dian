@@ -4,11 +4,11 @@ import {
   ExecutionContext,
   CallHandler,
   Logger,
-} from '@nestjs/common';
-import { Observable } from 'rxjs';
-import { finalize } from 'rxjs/operators';
-import { TenantRlsService } from '../database/tenant-rls.service';
-import { getTenantContext } from '../context/tenant-context';
+} from "@nestjs/common";
+import { Observable } from "rxjs";
+import { finalize } from "rxjs/operators";
+import { TenantRlsService } from "../database/tenant-rls.service";
+import { getTenantContext } from "../context/tenant-context";
 
 @Injectable()
 export class TenantRlsInterceptor implements NestInterceptor {
@@ -20,7 +20,7 @@ export class TenantRlsInterceptor implements NestInterceptor {
     const ctx = getTenantContext();
     const tenantId = ctx?.tenantId;
 
-    if (!tenantId || tenantId === 'anonymous') {
+    if (!tenantId || tenantId === "anonymous") {
       return next.handle();
     }
 
