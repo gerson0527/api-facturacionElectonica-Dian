@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Topbar from '../components/Topbar';
 import api from '../api/axios';
 import { Plus, Trash2, Save, Send } from 'lucide-react';
+import { v4 as uuidv4 } from 'uuid';
 
 interface Customer {
   id: string;
@@ -23,6 +24,7 @@ const InvoiceCreate = () => {
     paymentType: '1',
     paymentMethod: '10',
     currency: 'COP',
+    prefix: 'SETP',
     notes: ''
   });
 
@@ -82,14 +84,24 @@ const InvoiceCreate = () => {
 
     const payload = {
       ...formData,
-      lines: lines.map(l => ({
-        description: l.description,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice,
-        taxPercentage: l.taxPercentage
-      })),
+      idempotencyKey: uuidv4(),
+      lines: lines.map((l, index) => {
+        const lineExtensionAmount = (l.quantity * l.unitPrice) - l.discount;
+        const taxAmount = lineExtensionAmount * (l.taxPercentage / 100);
+        return {
+          lineNumber: index + 1,
+          description: l.description,
+          quantity: l.quantity,
+          unitCode: '94',
+          unitPrice: l.unitPrice,
+          lineExtensionAmount,
+          taxCode: '01',
+          taxPercent: l.taxPercentage,
+          taxAmount
+        };
+      }),
       taxTotals: [
-        { taxId: '01', taxName: 'IVA', taxAmount: totals.taxTotal, taxableAmount: totals.subtotal, taxPercentage: 19 }
+        { taxId: '01', taxPercent: 19, taxableAmount: totals.subtotal, taxAmount: totals.taxTotal }
       ]
     };
 
@@ -122,6 +134,10 @@ const InvoiceCreate = () => {
                   <option key={c.id} value={c.id}>{c.name} ({c.documentNumber})</option>
                 ))}
               </select>
+            </div>
+            <div className="input-group">
+              <label className="input-label">Prefijo de Resolución</label>
+              <input type="text" className="input-field" value={formData.prefix} onChange={e => setFormData({...formData, prefix: e.target.value})} placeholder="SETP" required />
             </div>
             <div className="input-group">
               <label className="input-label">Fecha de Emisión</label>

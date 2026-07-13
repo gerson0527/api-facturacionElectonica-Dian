@@ -1,5 +1,5 @@
 import { Module, MiddlewareConsumer, NestModule } from "@nestjs/common";
-import { TypeOrmModule } from "@nestjs/typeorm";
+import { TypeOrmModule } from "@nestjs/typeorm"; 
 import { BullModule } from "@nestjs/bullmq";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { ConfigModule, ConfigService } from "@nestjs/config";
@@ -29,6 +29,10 @@ import { WebhooksModule } from "./modules/webhooks/webhooks.module";
 import { DlqModule } from "./modules/dlq/dlq.module";
 import { OnboardingModule } from "./modules/onboarding/onboarding.module";
 import { RadianModule } from "./modules/radian/radian.module";
+import { DashboardModule } from "./modules/dashboard/dashboard.module";
+import { ProductsModule } from "./modules/products/products.module";
+import { SuppliersModule } from "./modules/suppliers/suppliers.module";
+import { InventoryModule } from "./modules/inventory/inventory.module";
 
 import { TenantMiddleware } from "./common/middleware/tenant.middleware";
 import { RequestLoggingMiddleware } from "./common/middleware/request-logging.middleware";
@@ -165,6 +169,10 @@ import { ScheduleModule } from "@nestjs/schedule";
     DlqModule,
     OnboardingModule,
     RadianModule,
+    DashboardModule,
+    ProductsModule,
+    SuppliersModule,
+    InventoryModule,
     TypeOrmModule.forFeature(Object.values(entities)),
   ],
   providers: [

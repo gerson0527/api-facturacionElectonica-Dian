@@ -3,6 +3,7 @@ import { ValidationPipe, Logger } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import { json, urlencoded } from "express";
 
 async function bootstrap() {
@@ -13,6 +14,7 @@ async function bootstrap() {
   const bodySizeLimit = process.env.BODY_SIZE_LIMIT || "10mb";
   app.use(json({ limit: bodySizeLimit }));
   app.use(urlencoded({ extended: true, limit: bodySizeLimit }));
+  app.use(cookieParser());
 
   app.setGlobalPrefix("v1", {
     exclude: ["/docs", "/health", "/health/live", "/health/ready"],

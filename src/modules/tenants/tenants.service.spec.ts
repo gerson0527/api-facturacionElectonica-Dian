@@ -41,7 +41,12 @@ describe("TenantsService", () => {
     tenantRepo.findOne.mockResolvedValue({ id: "t-1", nit: "900123123" });
 
     await expect(
-      service.create({ name: "ACME", nit: "900123123" }),
+      service.create({ 
+        name: "ACME", 
+        nit: "900123123",
+        adminEmail: "admin@acme.com",
+        adminPassword: "password123"
+      }),
     ).rejects.toThrow(new ConflictException("Ya existe un tenant con ese NIT"));
   });
 
@@ -62,6 +67,8 @@ describe("TenantsService", () => {
     const tenant = await service.create({
       name: "ACME",
       nit: "900123123",
+      adminEmail: "admin@acme.com",
+      adminPassword: "password123",
     });
 
     expect(tenant.id).toBe("tenant-1");
@@ -79,12 +86,12 @@ describe("TenantsService", () => {
     expect(userRepo.create).toHaveBeenCalledTimes(1);
     const createdAdmin = userRepo.create.mock.calls[0][0] as Partial<User>;
     expect(createdAdmin.tenantId).toBe("tenant-1");
-    expect(createdAdmin.email).toBe("admin@900123123.com");
+    expect(createdAdmin.email).toBe("admin@acme.com");
     expect(createdAdmin.fullName).toBe("Admin ACME");
     expect(createdAdmin.role).toBe("tenant_admin");
     expect(createdAdmin.isActive).toBe(true);
     expect(
-      await bcrypt.compare("admin123", createdAdmin.hashedPassword as string),
+      await bcrypt.compare("password123", createdAdmin.hashedPassword as string),
     ).toBe(true);
   });
 

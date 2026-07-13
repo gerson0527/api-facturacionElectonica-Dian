@@ -1,7 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Tenant } from "./tenant.entity";
-import { Invoice } from "./invoice.entity";
+import type { Tenant } from "./tenant.entity";
+import type { Invoice } from "./invoice.entity";
 
 @Entity("dian_dlq")
 export class DianDlq extends TenantEntity {
@@ -14,11 +14,11 @@ export class DianDlq extends TenantEntity {
   @Column({ type: "varchar", length: 50, default: "pending" })
   status: string; // pending, resolved
 
-  @ManyToOne(() => Invoice, { onDelete: "CASCADE" })
+  @ManyToOne("Invoice", { onDelete: "CASCADE" })
   @JoinColumn({ name: "invoice_id" })
   invoice: Invoice;
 
-  @ManyToOne(() => Tenant)
+  @ManyToOne("Tenant")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;
 }

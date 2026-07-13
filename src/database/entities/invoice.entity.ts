@@ -1,6 +1,6 @@
 import { Entity, Column, ManyToOne, JoinColumn, OneToMany, Unique, Check, VersionColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Tenant } from "./tenant.entity";
+import type { Tenant } from "./tenant.entity";
 import { Customer } from "./customer.entity";
 
 @Entity("invoices")
@@ -109,7 +109,7 @@ export class Invoice extends TenantEntity {
   @VersionColumn({ default: 1 })
   version: number;
 
-  @ManyToOne(() => Tenant, (t) => t.invoices)
+  @ManyToOne("Tenant", "invoices")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;
 

@@ -1,7 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn, Unique, Check, VersionColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Invoice } from "./invoice.entity";
-import { Tenant } from "./tenant.entity";
+import type { Invoice } from "./invoice.entity";
+import type { Tenant } from "./tenant.entity";
 
 @Entity("debit_notes")
 @Unique("uq_debit_notes_tenant_idempotency", ["tenant", "idempotencyKey"])
@@ -54,11 +54,11 @@ export class DebitNote extends TenantEntity {
   @VersionColumn({ default: 1 })
   version: number;
 
-  @ManyToOne(() => Invoice)
+  @ManyToOne("Invoice")
   @JoinColumn({ name: "invoice_id" })
   invoice: Invoice;
 
-  @ManyToOne(() => Tenant)
+  @ManyToOne("Tenant")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;
 }

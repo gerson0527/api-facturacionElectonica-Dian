@@ -1,6 +1,6 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Tenant } from "./tenant.entity";
+import type { Tenant } from "./tenant.entity";
 
 @Entity("users")
 export class User extends TenantEntity {
@@ -25,7 +25,7 @@ export class User extends TenantEntity {
   @Column({ type: "timestamptz", nullable: true, name: "locked_until" })
   lockedUntil: Date | null;
 
-  @ManyToOne(() => Tenant, (t) => t.users)
+  @ManyToOne("Tenant", "users")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;
 }

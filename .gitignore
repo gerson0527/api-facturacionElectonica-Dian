@@ -9,3 +9,4 @@ storage/pdf/*
 storage/dian/*
 !storage/**/.gitkeep
 coverage
+DocumentacionDian/

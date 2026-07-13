@@ -1,8 +1,27 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiBody } from "@nestjs/swagger";
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Res,
+  Req,
+  Get,
+  UseGuards,
+} from "@nestjs/common";
+import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { AuthService } from "./auth.service";
 import { IsEmail, IsString, MinLength } from "class-validator";
+import { Response, Request } from "express";
+import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
+import { CurrentUser, JwtPayload } from "@/common/decorators";
+import {
+  buildAccessCookieOptions,
+  buildRefreshCookieOptions,
+  buildClearAccessCookieOptions,
+  buildClearRefreshCookieOptions,
+} from "@/common/cookie.factory";
 
 export class LoginDto {
   @IsEmail()
@@ -11,11 +30,6 @@ export class LoginDto {
   @IsString()
   @MinLength(6)
   password: string;
-}
-
-export class RefreshDto {
-  @IsString()
-  refreshToken: string;
 }
 
 export class CreateUserDto {
@@ -44,24 +58,76 @@ export class AuthController {
   @Post("login")
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  @ApiOperation({ summary: "Iniciar sesión" })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto.email, dto.password);
+  @ApiOperation({ summary: "Iniciar sesión (devuelve cookies)" })
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tokens = await this.authService.login(dto.email, dto.password);
+    
+    // Set HttpOnly Cookies
+    const isProduction = process.env.NODE_ENV === "production";
+    const accessCookieName = isProduction ? "__Host-access" : "access";
+    const refreshCookieName = isProduction ? "__Host-refresh" : "refresh";
+
+    res.cookie(accessCookieName, tokens.accessToken, buildAccessCookieOptions());
+    res.cookie(refreshCookieName, tokens.refreshToken, buildRefreshCookieOptions());
+
+    return { message: "Login exitoso" };
   }
 
   @Post("refresh")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Refrescar token" })
-  async refresh(@Body() dto: RefreshDto) {
-    return this.authService.refresh(dto.refreshToken);
+  @ApiOperation({ summary: "Refrescar token desde cookie HttpOnly" })
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const isProduction = process.env.NODE_ENV === "production";
+    const refreshCookieName = isProduction ? "__Host-refresh" : "refresh";
+    const refreshToken = req.cookies?.[refreshCookieName];
+
+    if (!refreshToken) {
+      res.status(HttpStatus.UNAUTHORIZED).send({ message: "No refresh token provided" });
+      return;
+    }
+
+    const tokens = await this.authService.refresh(refreshToken);
+    
+    const accessCookieName = isProduction ? "__Host-access" : "access";
+    res.cookie(accessCookieName, tokens.accessToken, buildAccessCookieOptions());
+    res.cookie(refreshCookieName, tokens.refreshToken, buildRefreshCookieOptions());
+
+    return { message: "Token refrescado exitosamente" };
   }
 
   @Post("logout")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Cerrar sesión" })
-  async logout(@Body() dto: RefreshDto) {
-    await this.authService.logout(dto.refreshToken);
+  @ApiOperation({ summary: "Cerrar sesión (limpia cookies)" })
+  async logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const isProduction = process.env.NODE_ENV === "production";
+    const accessCookieName = isProduction ? "__Host-access" : "access";
+    const refreshCookieName = isProduction ? "__Host-refresh" : "refresh";
+    
+    const refreshToken = req.cookies?.[refreshCookieName];
+    if (refreshToken) {
+      await this.authService.logout(refreshToken);
+    }
+
+    res.cookie(accessCookieName, "", buildClearAccessCookieOptions());
+    res.cookie(refreshCookieName, "", buildClearRefreshCookieOptions());
+
     return { message: "Sesión cerrada exitosamente" };
+  }
+
+  @Get("me")
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: "Obtener perfil del usuario autenticado" })
+  getProfile(@CurrentUser() user: JwtPayload) {
+    return user;
   }
 
   @Post("revoke-all")

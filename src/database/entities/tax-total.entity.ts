@@ -1,6 +1,6 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Invoice } from "./invoice.entity";
+import type { Invoice } from "./invoice.entity";
 
 @Entity("tax_totals")
 export class TaxTotal extends TenantEntity {
@@ -19,7 +19,7 @@ export class TaxTotal extends TenantEntity {
   @Column({ type: "decimal", precision: 20, scale: 2, name: "tax_amount" })
   taxAmount: number;
 
-  @ManyToOne(() => Invoice)
+  @ManyToOne("Invoice")
   @JoinColumn({ name: "invoice_id" })
   invoice: Invoice;
 }

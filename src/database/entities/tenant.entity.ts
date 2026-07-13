@@ -1,7 +1,7 @@
 import { Entity, Column, OneToMany } from "typeorm";
 import { BaseEntity } from "./base.entity";
-import { DianSubmission } from "./dian-submission.entity";
-import { WebhookEndpoint } from "./webhook-endpoint.entity";
+import type { DianSubmission } from "./dian-submission.entity";
+import type { WebhookEndpoint } from "./webhook-endpoint.entity";
 import type { User } from "./user.entity";
 import type { DianSoftwareCredential } from "./dian-software-credential.entity";
 import type { DigitalCertificate } from "./digital-certificate.entity";
@@ -56,9 +56,9 @@ export class Tenant extends BaseEntity {
   @OneToMany("Invoice", (i: Invoice) => i.tenant)
   invoices: Invoice[];
 
-  @OneToMany(() => DianSubmission, (ds) => ds.tenant)
+  @OneToMany("DianSubmission", (ds: DianSubmission) => ds.tenant)
   dianSubmissions: DianSubmission[];
 
-  @OneToMany(() => WebhookEndpoint, (we) => we.tenant)
+  @OneToMany("WebhookEndpoint", (we: WebhookEndpoint) => we.tenant)
   webhookEndpoints: WebhookEndpoint[];
 }

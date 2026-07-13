@@ -1,7 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Invoice } from "./invoice.entity";
-import { Tenant } from "./tenant.entity";
+import type { Invoice } from "./invoice.entity";
+import type { Tenant } from "./tenant.entity";
 
 @Entity("radian_events")
 export class RadianEvent extends TenantEntity {
@@ -29,11 +29,11 @@ export class RadianEvent extends TenantEntity {
   @Column({ type: "text", nullable: true, name: "dian_response_path" })
   dianResponsePath: string;
 
-  @ManyToOne(() => Invoice)
+  @ManyToOne("Invoice")
   @JoinColumn({ name: "invoice_id" })
   invoice: Invoice;
 
-  @ManyToOne(() => Tenant)
+  @ManyToOne("Tenant")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;
 }

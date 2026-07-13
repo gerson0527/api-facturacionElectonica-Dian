@@ -29,6 +29,12 @@ export class CreateTenantDto {
   @IsOptional()
   @IsString()
   environment?: string;
+
+  @IsString()
+  adminEmail: string;
+
+  @IsString()
+  adminPassword: string;
 }
 
 @ApiTags("Tenants")

@@ -1,67 +1,92 @@
-import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FileText, Users, LogOut, Settings } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import { 
+  LayoutDashboard, 
+  TrendingUp, 
+  FileText, 
+  FileMinus, 
+  FilePlus, 
+  ShoppingCart, 
+  Users, 
+  Building2, 
+  Package, 
+  Boxes, 
+  CreditCard, 
+  BarChart2, 
+  ShieldCheck, 
+  UserCircle, 
+  Settings, 
+  LogOut,
+  Hexagon
+} from 'lucide-react';
+import { useAuth } from '../providers/AuthProvider';
+
+const navItems = [
+  { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
+  { to: '/sales', icon: <TrendingUp size={20} />, label: 'Ventas' },
+  { to: '/quotations', icon: <FileText size={20} />, label: 'Cotizaciones' },
+  { to: '/invoices', icon: <FileText size={20} />, label: 'Facturas Electrónicas' },
+  { to: '/credit-notes', icon: <FilePlus size={20} />, label: 'Notas Crédito' },
+  { to: '/debit-notes', icon: <FileMinus size={20} />, label: 'Notas Débito' },
+  { to: '/purchases', icon: <ShoppingCart size={20} />, label: 'Facturas Compra' },
+  { to: '/customers', icon: <Users size={20} />, label: 'Clientes' },
+  { to: '/suppliers', icon: <Building2 size={20} />, label: 'Proveedores' },
+  { to: '/products', icon: <Package size={20} />, label: 'Productos' },
+  { to: '/inventory', icon: <Boxes size={20} />, label: 'Inventario' },
+  { to: '/payments', icon: <CreditCard size={20} />, label: 'Pagos' },
+  { to: '/reports', icon: <BarChart2 size={20} />, label: 'Reportes' },
+  { to: '/dian', icon: <ShieldCheck size={20} />, label: 'DIAN' },
+  { to: '/users', icon: <UserCircle size={20} />, label: 'Usuarios' },
+  { to: '/settings', icon: <Settings size={20} />, label: 'Configuración' },
+];
 
 const Sidebar = () => {
-  const navigate = useNavigate();
+  const { logout } = useAuth();
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/login');
+  const handleLogout = async () => {
+    await logout();
   };
 
   return (
-    <div className="sidebar">
+    <aside className="sidebar">
       <div className="sidebar-logo">
-        <FileText color="var(--primary-color)" />
-        <span>DIAN API</span>
+        <div style={{
+          background: 'linear-gradient(135deg, var(--primary-color), var(--accent-color))',
+          padding: '0.5rem',
+          borderRadius: '0.5rem',
+          color: 'white',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <Hexagon size={24} fill="currentColor" stroke="none" />
+        </div>
+        <span style={{ color: 'var(--text-primary)' }}>FactuDian</span>
       </div>
       
-      <div className="sidebar-nav">
-        <NavLink 
-          to="/dashboard" 
-          className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
-        >
-          <LayoutDashboard size={20} />
-          <span>Dashboard</span>
-        </NavLink>
-        
-        <NavLink 
-          to="/invoices" 
-          className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
-        >
-          <FileText size={20} />
-          <span>Facturas</span>
-        </NavLink>
-        
-        <NavLink 
-          to="/customers" 
-          className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
-        >
-          <Users size={20} />
-          <span>Clientes</span>
-        </NavLink>
-        
-        <NavLink 
-          to="/settings" 
-          className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
-        >
-          <Settings size={20} />
-          <span>Configuración</span>
-        </NavLink>
+      <nav className="sidebar-nav">
+        {navItems.map((item, index) => (
+          <NavLink 
+            key={index}
+            to={item.to} 
+            className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
         
         <div style={{ flex: 1 }}></div>
         
         <button 
           onClick={handleLogout}
           className="nav-item" 
-          style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--danger-color)' }}
+          style={{ width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--danger-color)', marginTop: '1rem' }}
         >
           <LogOut size={20} />
           <span>Cerrar Sesión</span>
         </button>
-      </div>
-    </div>
+      </nav>
+    </aside>
   );
 };
 

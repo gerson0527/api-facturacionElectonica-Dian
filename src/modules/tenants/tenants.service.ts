@@ -26,6 +26,8 @@ export class TenantsService {
     phone?: string;
     email?: string;
     environment?: string;
+    adminEmail: string;
+    adminPassword: string;
   }): Promise<Tenant> {
     const existing = await this.tenantRepo.findOne({
       where: { nit: data.nit },
@@ -46,10 +48,10 @@ export class TenantsService {
     const saved = await this.tenantRepo.save(tenant);
 
     // Create admin user
-    const adminPassword = await bcrypt.hash("admin123", 10);
+    const adminPassword = await bcrypt.hash(data.adminPassword, 10);
     const admin = this.userRepo.create({
       tenantId: saved.id,
-      email: `admin@${saved.nit}.com`,
+      email: data.adminEmail,
       hashedPassword: adminPassword,
       fullName: `Admin ${saved.name}`,
       role: "tenant_admin",

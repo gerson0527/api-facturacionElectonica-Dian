@@ -19,3 +19,6 @@ export * from "./webhook-delivery.entity";
 export * from "./dian-dlq.entity";
 export * from "./radian-event.entity";
 export { RefreshToken } from "./refresh-token.entity";
+export { Product } from "./product.entity";
+export { Supplier } from "./supplier.entity";
+export { InventoryMovement, MovementType } from "./inventory-movement.entity";

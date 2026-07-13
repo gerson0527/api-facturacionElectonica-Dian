@@ -1,6 +1,6 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Tenant } from "./tenant.entity";
+import type { Tenant } from "./tenant.entity";
 
 @Entity("digital_certificates")
 export class DigitalCertificate extends TenantEntity {
@@ -19,7 +19,7 @@ export class DigitalCertificate extends TenantEntity {
   @Column({ type: "boolean", default: true, name: "is_active" })
   isActive: boolean;
 
-  @ManyToOne(() => Tenant, (t) => t.digitalCertificates)
+  @ManyToOne("Tenant", "digitalCertificates")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;
 }

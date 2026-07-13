@@ -1,6 +1,6 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Tenant } from "./tenant.entity";
+import type { Tenant } from "./tenant.entity";
 
 @Entity("dian_software_credentials")
 export class DianSoftwareCredential extends TenantEntity {
@@ -21,7 +21,7 @@ export class DianSoftwareCredential extends TenantEntity {
   })
   habilitacionStatus: string;
 
-  @ManyToOne(() => Tenant, (t) => t.softwareCredentials)
+  @ManyToOne("Tenant", "softwareCredentials")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;
 }

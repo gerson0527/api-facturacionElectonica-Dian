@@ -1,6 +1,6 @@
 import { Entity, Column, ManyToOne, JoinColumn, Check } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Tenant } from "./tenant.entity";
+import type { Tenant } from "./tenant.entity";
 
 @Entity("numbering_ranges")
 @Check("chk_numbering_range_valid", '"from_number" <= "to_number" AND "current_number" >= 0')
@@ -26,7 +26,7 @@ export class NumberingRange extends TenantEntity {
   @Column({ type: "boolean", default: true, name: "is_active" })
   isActive: boolean;
 
-  @ManyToOne(() => Tenant, (t) => t.numberingRanges)
+  @ManyToOne("Tenant", "numberingRanges")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;
 }

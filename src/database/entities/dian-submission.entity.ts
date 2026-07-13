@@ -1,7 +1,7 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { TenantEntity } from "./base.entity";
-import { Invoice } from "./invoice.entity";
-import { Tenant } from "./tenant.entity";
+import type { Invoice } from "./invoice.entity";
+import type { Tenant } from "./tenant.entity";
 
 @Entity("dian_submissions")
 export class DianSubmission extends TenantEntity {
@@ -43,11 +43,11 @@ export class DianSubmission extends TenantEntity {
   @Column({ type: "timestamptz", nullable: true, name: "responded_at" })
   respondedAt: Date;
 
-  @ManyToOne(() => Invoice)
+  @ManyToOne("Invoice")
   @JoinColumn({ name: "invoice_id" })
   invoice: Invoice;
 
-  @ManyToOne(() => Tenant)
+  @ManyToOne("Tenant")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;
 }
