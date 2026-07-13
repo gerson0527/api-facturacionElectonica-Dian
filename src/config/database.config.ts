@@ -16,10 +16,11 @@ export const dataSourceOptions: DataSourceOptions = {
   synchronize: false,
   logging: process.env.NODE_ENV === "development",
   ssl:
-    process.env.NODE_ENV === "production" || process.env.NODE_ENV === "habilitacion"
-      ? { 
-          rejectUnauthorized: true, 
-          ...(process.env.DB_CA_CERT ? { ca: process.env.DB_CA_CERT } : {})
+    process.env.NODE_ENV === "production" ||
+    process.env.NODE_ENV === "habilitacion"
+      ? {
+          rejectUnauthorized: true,
+          ...(process.env.DB_CA_CERT ? { ca: process.env.DB_CA_CERT } : {}),
         }
       : false,
 };

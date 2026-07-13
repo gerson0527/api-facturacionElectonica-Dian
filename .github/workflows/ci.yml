@@ -106,34 +106,30 @@ jobs:
 
       - name: Integration tests
         run: npm run test:integration -- --runInBand --ci --reporters=default --reporters=jest-junit
-        continue-on-error: true
         env:
           JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
           JEST_JUNIT_OUTPUT_NAME: "integration-test-results.xml"
 
       - name: Security tests
         run: npm run test:security -- --runInBand --ci --reporters=default --reporters=jest-junit
-        continue-on-error: true
         env:
           JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
           JEST_JUNIT_OUTPUT_NAME: "security-test-results.xml"
 
       - name: Concurrency tests
         run: npm run test:concurrency -- --runInBand --ci --reporters=default --reporters=jest-junit
-        continue-on-error: true
         env:
           JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
           JEST_JUNIT_OUTPUT_NAME: "concurrency-test-results.xml"
 
       - name: Signature tests
         run: npm run test:signature -- --runInBand --ci --reporters=default --reporters=jest-junit
-        continue-on-error: true
         env:
           JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
           JEST_JUNIT_OUTPUT_NAME: "signature-test-results.xml"
 
       - name: npm audit
-        run: npm audit --omit=dev || true
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Generate SBOM
         run: npx @cyclonedx/cyclonedx-npm --output-format json --output-file sbom.json

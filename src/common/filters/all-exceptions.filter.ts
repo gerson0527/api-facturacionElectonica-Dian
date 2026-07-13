@@ -33,7 +33,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.error(`Unhandled: ${exception.message}`, exception.stack);
     }
 
-    const requestId = (request as any).requestId || 'unknown';
+    const requestId = (request as any).requestId || "unknown";
 
     response.status(status).json({
       code: status,

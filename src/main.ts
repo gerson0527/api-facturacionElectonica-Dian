@@ -67,7 +67,8 @@ async function bootstrap() {
   );
 
   if (isProduction || process.env.TRUST_PROXY) {
-    const proxyConfig = process.env.TRUST_PROXY || "loopback, linklocal, uniquelocal";
+    const proxyConfig =
+      process.env.TRUST_PROXY || "loopback, linklocal, uniquelocal";
     app.getHttpAdapter().getInstance().set("trust proxy", proxyConfig);
   }
 
