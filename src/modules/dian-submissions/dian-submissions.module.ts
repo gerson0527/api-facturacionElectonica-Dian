@@ -5,11 +5,13 @@ import { DianSubmissionsService } from "./dian-submissions.service";
 import { DianSubmission } from "@/database/entities/dian-submission.entity";
 import { Invoice } from "@/database/entities/invoice.entity";
 import { DianSoapClient } from "@/services/dian-soap.client";
+import { SigningService } from "@/services/signing.service";
+import { CryptoService } from "@/services/crypto.service";
 
 @Module({
   imports: [TypeOrmModule.forFeature([DianSubmission, Invoice])],
   controllers: [DianSubmissionsController],
-  providers: [DianSubmissionsService, DianSoapClient],
+  providers: [DianSubmissionsService, DianSoapClient, SigningService, CryptoService],
   exports: [DianSubmissionsService],
 })
 export class DianSubmissionsModule {}
