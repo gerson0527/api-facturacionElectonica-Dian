@@ -87,7 +87,16 @@ export class DianSubmissionProcessor extends WorkerHost {
       const env = this.configService.get<string>("DIAN_ENVIRONMENT") || "habilitacion";
 
       let response;
-      if (env === "habilitacion" && testSetId) {
+      const submission = await this.submissionRepo.findOne({ where: { id: submissionId } });
+      
+      if (submission?.documentType === "ApplicationResponse") {
+        response = await this.dianSoapClient.sendEventUpdateStatus(
+          fileName,
+          contentFileBase64,
+          pfxBuffer,
+          password
+        );
+      } else if (env === "habilitacion" && testSetId) {
         response = await this.dianSoapClient.sendTestSetAsync(
           fileName,
           contentFileBase64,

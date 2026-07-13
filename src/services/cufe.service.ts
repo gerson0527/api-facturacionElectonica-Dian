@@ -46,4 +46,9 @@ export class CufeService {
       .digest("hex")
       .toUpperCase();
   }
+
+  generateCude(input: CufeInput): string {
+    // CUDE is exactly the same algorithm, but for events, valBruto, valIva, valAdicional, valTotal are usually "0.00"
+    return this.generate(input);
+  }
 }

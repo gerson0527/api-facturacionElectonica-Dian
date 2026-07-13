@@ -17,4 +17,5 @@ export * from "./audit-event.entity";
 export * from "./webhook-endpoint.entity";
 export * from "./webhook-delivery.entity";
 export * from "./dian-dlq.entity";
+export * from "./radian-event.entity";
 export { RefreshToken } from "./refresh-token.entity";
