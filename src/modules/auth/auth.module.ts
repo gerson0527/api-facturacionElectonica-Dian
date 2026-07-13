@@ -6,13 +6,15 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { StringValue } from 'ms';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { RefreshTokenService } from './refresh-token.service';
 import { JwtStrategy } from './jwt.strategy';
 import { User } from '@/database/entities/user.entity';
 import { Tenant } from '@/database/entities/tenant.entity';
+import { RefreshToken } from '@/database/entities/refresh-token.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, Tenant]),
+    TypeOrmModule.forFeature([User, Tenant, RefreshToken]),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -26,7 +28,7 @@ import { Tenant } from '@/database/entities/tenant.entity';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [AuthService, JwtModule, JwtStrategy],
+  providers: [AuthService, RefreshTokenService, JwtStrategy],
+  exports: [AuthService, RefreshTokenService, JwtModule, JwtStrategy],
 })
 export class AuthModule {}

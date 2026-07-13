@@ -86,8 +86,14 @@ function getSslConfig(config: ConfigService) {
       useFactory: (config: ConfigService) => ({
         throttlers: [
           {
+            name: 'short',
             ttl: (config.get<number>('THROTTLER_TTL') || 60) * 1000,
             limit: config.get<number>('THROTTLER_LIMIT') || 30,
+          },
+          {
+            name: 'login',
+            ttl: (config.get<number>('THROTTLER_TTL') || 60) * 1000,
+            limit: config.get<number>('THROTTLER_LIMIT_LOGIN') || 5,
           },
         ],
       }),

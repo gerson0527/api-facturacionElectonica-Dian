@@ -3,18 +3,22 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  const bodySizeLimit = process.env.BODY_SIZE_LIMIT || '10mb';
+  app.use(json({ limit: bodySizeLimit }));
+  app.use(urlencoded({ extended: true, limit: bodySizeLimit }));
 
   app.setGlobalPrefix('v1', { exclude: ['/docs', '/health', '/health/live', '/health/ready'] });
 
   const corsOrigins = process.env.CORS_ALLOWED_ORIGINS
     ? process.env.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim())
     : ['http://localhost:3000'];
-
-  const isProduction = process.env.NODE_ENV === 'production';
 
   const corsOptions: Record<string, unknown> = {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
@@ -37,7 +41,7 @@ async function bootstrap() {
 
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: isProduction ? { directives: { defaultSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], connectSrc: ["'self'"] } } : false,
       crossOriginResourcePolicy: { policy: 'cross-origin' },
       hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
       hidePoweredBy: true,
@@ -47,11 +51,10 @@ async function bootstrap() {
     }),
   );
 
-  if (process.env.NODE_ENV === 'production') {
+  if (isProduction) {
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
   }
 
-  const bodySizeLimit = process.env.BODY_SIZE_LIMIT || '10mb';
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

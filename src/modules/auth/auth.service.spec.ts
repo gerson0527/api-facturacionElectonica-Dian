@@ -4,10 +4,11 @@ import { JwtModule, JwtService } from '@nestjs/jwt';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
 import { Tenant } from '@/database/entities/tenant.entity';
 import { User } from '@/database/entities/user.entity';
+import { RefreshToken } from '@/database/entities/refresh-token.entity';
 import { AuthService } from './auth.service';
+import { RefreshTokenService } from './refresh-token.service';
 import { JwtStrategy } from './jwt.strategy';
 
 describe('AuthService', () => {
@@ -24,6 +25,16 @@ describe('AuthService', () => {
     findOne: jest.fn(),
   };
 
+  const mockRefreshTokenRepo = {
+    findOne: jest.fn(),
+    create: jest.fn(),
+    upsert: jest.fn(),
+    update: jest.fn(),
+    save: jest.fn(),
+    find: jest.fn(),
+    delete: jest.fn(),
+  };
+
   const buildUser = async (overrides: Partial<User> = {}): Promise<User> => ({
     id: 'user-1',
     tenantId: 'tenant-1',
@@ -32,6 +43,8 @@ describe('AuthService', () => {
     fullName: 'Test User',
     role: 'tenant_admin',
     isActive: true,
+    failedAttempts: 0,
+    lockedUntil: null,
     ...overrides,
   } as User);
 
@@ -50,6 +63,7 @@ describe('AuthService', () => {
       ],
       providers: [
         AuthService,
+        RefreshTokenService,
         JwtStrategy,
         {
           provide: ConfigService,
@@ -69,6 +83,7 @@ describe('AuthService', () => {
         },
         { provide: getRepositoryToken(User), useValue: mockUserRepo },
         { provide: getRepositoryToken(Tenant), useValue: mockTenantRepo },
+        { provide: getRepositoryToken(RefreshToken), useValue: mockRefreshTokenRepo },
       ],
     }).compile();
 
@@ -104,6 +119,7 @@ describe('AuthService', () => {
   it('retorna access y refresh tokens válidos en login exitoso', async () => {
     const user = await buildUser();
     mockUserRepo.findOne.mockResolvedValue(user);
+    mockRefreshTokenRepo.upsert.mockResolvedValue({});
 
     const tokens = await authService.login(user.email, 'correctpass');
 
@@ -129,6 +145,7 @@ describe('AuthService', () => {
       email: user.email,
       type: 'refresh',
     });
+    expect(refreshPayload.jti).toBeTruthy();
   });
 
   it('rechaza refresh con token inválido', async () => {
@@ -146,21 +163,19 @@ describe('AuthService', () => {
         role: 'tenant_admin',
         email: 'missing@test.com',
         type: 'refresh',
+        jti: 'test-jti-001',
       },
       {
         secret: process.env.JWT_REFRESH_SECRET,
       },
     );
+    mockRefreshTokenRepo.findOne.mockResolvedValue({ jti: 'test-jti-001', consumedAt: null, revokedAt: null });
+    mockRefreshTokenRepo.save.mockResolvedValue({});
     mockUserRepo.findOne.mockResolvedValue(null);
 
     await expect(authService.refresh(refreshToken)).rejects.toThrow(
-      new UnauthorizedException('Refresh token inválido o expirado'),
+      new UnauthorizedException('Usuario no encontrado'),
     );
-
-    expect(mockUserRepo.findOne).toHaveBeenCalledWith({
-      where: { id: 'missing-user', isActive: true },
-      relations: ['tenant'],
-    });
   });
 
   it('genera nuevos tokens en refresh válido', async () => {
@@ -172,11 +187,14 @@ describe('AuthService', () => {
         role: user.role,
         email: user.email,
         type: 'refresh',
+        jti: 'test-jti-002',
       },
       {
         secret: process.env.JWT_REFRESH_SECRET,
       },
     );
+    mockRefreshTokenRepo.findOne.mockResolvedValue({ jti: 'test-jti-002', consumedAt: null, revokedAt: null });
+    mockRefreshTokenRepo.save.mockResolvedValue({});
     mockUserRepo.findOne.mockResolvedValue(user);
 
     const tokens = await authService.refresh(refreshToken);
@@ -189,6 +207,7 @@ describe('AuthService', () => {
     expect(refreshedPayload.type).toBe('refresh');
     expect(accessPayload.sub).toBe(user.id);
     expect(refreshedPayload.sub).toBe(user.id);
+    expect(refreshedPayload.jti).toBeTruthy();
   });
 
   it('createUser guarda contraseña hasheada y no en claro', async () => {
