@@ -1,5 +1,5 @@
 import { Entity, Column, OneToMany } from "typeorm";
-import { TenantEntity } from "./base.entity";
+import { BaseEntity } from "./base.entity";
 import type { User } from "./user.entity";
 import type { DianSoftwareCredential } from "./dian-software-credential.entity";
 import type { DigitalCertificate } from "./digital-certificate.entity";
@@ -8,7 +8,7 @@ import type { Customer } from "./customer.entity";
 import type { Invoice } from "./invoice.entity";
 
 @Entity("tenants")
-export class Tenant extends TenantEntity {
+export class Tenant extends BaseEntity {
   @Column({ type: "varchar", length: 200 })
   name: string;
 

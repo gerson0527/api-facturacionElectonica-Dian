@@ -128,6 +128,12 @@ jobs:
           JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
           JEST_JUNIT_OUTPUT_NAME: "signature-test-results.xml"
 
+      - name: DIAN Fixtures tests
+        run: npm run test:dian-fixtures -- --runInBand --ci --reporters=default --reporters=jest-junit
+        env:
+          JEST_JUNIT_OUTPUT_DIR: "./reports/junit"
+          JEST_JUNIT_OUTPUT_NAME: "dian-fixtures-test-results.xml"
+
       - name: npm audit
         run: npm audit --omit=dev --audit-level=high
 

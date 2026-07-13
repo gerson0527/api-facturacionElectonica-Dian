@@ -12,9 +12,18 @@ describe("API Facturación Electrónica (e2e)", () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    
+    // Add Swagger for /docs test
+    const { DocumentBuilder, SwaggerModule } = require("@nestjs/swagger");
+    const config = new DocumentBuilder().setTitle("API").setVersion("1.0").build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup("docs", app, document);
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
     );
+    app.setGlobalPrefix("v1", {
+      exclude: ["/docs", "/health", "/health/live", "/health/ready"],
+    });
     await app.init();
   });
 

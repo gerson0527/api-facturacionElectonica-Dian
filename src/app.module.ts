@@ -63,8 +63,11 @@ function getSslConfig(config: ConfigService) {
   return { rejectUnauthorized: true };
 }
 
+import { ScheduleModule } from "@nestjs/schedule";
+
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     AppConfigModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

@@ -1,9 +1,10 @@
-import { Entity, Column, ManyToOne, JoinColumn, OneToMany } from "typeorm";
+import { Entity, Column, ManyToOne, JoinColumn, OneToMany, Unique } from "typeorm";
 import { TenantEntity } from "./base.entity";
 import { Tenant } from "./tenant.entity";
 import { Customer } from "./customer.entity";
 
 @Entity("invoices")
+@Unique("uq_invoices_tenant_idempotency", ["tenant", "idempotencyKey"])
 export class Invoice extends TenantEntity {
   @Column({ type: "varchar", length: 30 })
   number: string;
@@ -87,8 +88,20 @@ export class Invoice extends TenantEntity {
   @Column({ type: "text", nullable: true, name: "dian_response_path" })
   dianResponsePath: string;
 
-  @Column({ type: "uuid", name: "idempotency_key", unique: true })
+  @Column({ type: "uuid", name: "idempotency_key" })
   idempotencyKey: string;
+
+  @Column({ type: "varchar", length: 64, name: "request_payload_hash", nullable: true })
+  requestPayloadHash: string;
+
+  @Column({ type: "jsonb", name: "response_snapshot", nullable: true })
+  responseSnapshot: any;
+
+  @Column({ type: "int", name: "response_status_code", nullable: true })
+  responseStatusCode: number;
+
+  @Column({ type: "timestamp", name: "expires_at", nullable: true })
+  expiresAt: Date;
 
   @ManyToOne(() => Tenant, (t) => t.invoices)
   @JoinColumn({ name: "tenant_id" })

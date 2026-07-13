@@ -11,5 +11,6 @@ export { TaxTotal } from "./tax-total.entity";
 export { CreditNote } from "./credit-note.entity";
 export { DebitNote } from "./debit-note.entity";
 export { DianSubmission } from "./dian-submission.entity";
+export { OutboxEvent } from "./outbox-event.entity";
 export { AuditEvent } from "./audit-event.entity";
 export { RefreshToken } from "./refresh-token.entity";

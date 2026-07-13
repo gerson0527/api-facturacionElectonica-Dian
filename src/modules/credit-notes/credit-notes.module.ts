@@ -19,6 +19,7 @@ import { CryptoService } from "@/services/crypto.service";
 import { SoftwareCredentialsService } from "../software-credentials/software-credentials.service";
 import { CertificatesService } from "../certificates/certificates.service";
 import { NumberingRangesService } from "../numbering-ranges/numbering-ranges.service";
+import { IdempotencyService } from "@/services/idempotency.service";
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { NumberingRangesService } from "../numbering-ranges/numbering-ranges.ser
     SoftwareCredentialsService,
     CertificatesService,
     NumberingRangesService,
+    IdempotencyService,
   ],
   exports: [CreditNotesService],
 })

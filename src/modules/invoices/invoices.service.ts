@@ -11,6 +11,7 @@ import { Queue } from "bullmq";
 import { ConfigService } from "@nestjs/config";
 import { Invoice } from "@/database/entities/invoice.entity";
 import { InvoiceLine } from "@/database/entities/invoice-line.entity";
+import { OutboxEvent } from "@/database/entities/outbox-event.entity";
 import { TaxTotal } from "@/database/entities/tax-total.entity";
 import { NumberingRange } from "@/database/entities/numbering-range.entity";
 import { DianSoftwareCredential } from "@/database/entities/dian-software-credential.entity";
@@ -36,6 +37,7 @@ import * as path from "path";
 import archiver from "archiver";
 import { createWriteStream } from "fs";
 import { v4 as uuidv4 } from "uuid";
+import { Money } from "@/domain/value-objects/money.vo";
 
 export interface CreateInvoiceInput {
   invoiceType?: string;
@@ -111,318 +113,323 @@ export class InvoicesService {
     tenantId: string,
     input: CreateInvoiceInput,
     actorId: string,
-  ): Promise<Invoice> {
-    // Idempotency check
-    const existing = await this.idempotencyService.findExisting(
+  ): Promise<any> {
+    return this.idempotencyService.executeWithIdempotency(
+      tenantId,
       input.idempotencyKey,
-    );
-    if (existing) {
-      return existing;
-    }
+      input,
+      this.invoiceRepo,
+      async (payloadHash, manager) => {
+        // Validate customer
+        const customer = await this.customerRepo.findOne({
+          where: { id: input.customerId, tenantId },
+        });
+        if (!customer) {
+          throw new NotFoundException("Cliente no encontrado");
+        }
 
-    // Validate customer
-    const customer = await this.customerRepo.findOne({
-      where: { id: input.customerId, tenantId },
-    });
-    if (!customer) {
-      throw new NotFoundException("Cliente no encontrado");
-    }
+        // Get tenant info
+        const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+        if (!tenant) {
+          throw new NotFoundException("Tenant no encontrado");
+        }
 
-    // Get tenant info
-    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
-    if (!tenant) {
-      throw new NotFoundException("Tenant no encontrado");
-    }
+        // Get software credentials
+        const softwareCreds = await this.softwareCredRepo.findOne({
+          where: { tenantId },
+        });
+        if (!softwareCreds) {
+          throw new NotFoundException(
+            "Credenciales de software DIAN no encontradas",
+          );
+        }
+        const softwarePin =
+          await this.softwareCredentialsService.decryptPin(softwareCreds);
 
-    // Get software credentials
-    const softwareCreds = await this.softwareCredRepo.findOne({
-      where: { tenantId },
-    });
-    if (!softwareCreds) {
-      throw new NotFoundException(
-        "Credenciales de software DIAN no encontradas",
-      );
-    }
-    const softwarePin =
-      await this.softwareCredentialsService.decryptPin(softwareCreds);
+        // Get active certificate
+        const cert = await this.certRepo.findOne({
+          where: { tenant: { id: tenantId }, isActive: true },
+        });
+        if (!cert) {
+          throw new NotFoundException("Certificado digital no encontrado");
+        }
 
-    // Get active certificate
-    const cert = await this.certRepo.findOne({
-      where: { tenantId, isActive: true },
-    });
-    if (!cert) {
-      throw new NotFoundException("Certificado digital no encontrado");
-    }
+        // Business validations
+        const subtotal = input.lines.reduce(
+          (sum, l) => sum.add(new Money(l.lineExtensionAmount || new Money(l.quantity).multiply(l.unitPrice).toNumber())),
+          new Money(0),
+        );
+        const totalTax = input.taxTotals.reduce((sum, t) => sum.add(new Money(t.taxAmount)), new Money(0));
+        const totalAmount = subtotal.add(totalTax);
 
-    // Business validations
-    const subtotal = input.lines.reduce(
-      (sum, l) => sum + (l.lineExtensionAmount || l.quantity * l.unitPrice),
-      0,
-    );
-    const totalTax = input.taxTotals.reduce((sum, t) => sum + t.taxAmount, 0);
-    const totalAmount = subtotal + totalTax;
+        this.validationsService.validateInvoice({
+          lines: input.lines.map((l) => ({
+            lineExtensionAmount: l.lineExtensionAmount || new Money(l.quantity).multiply(l.unitPrice).toNumber(),
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+            taxCode: l.taxCode || "01",
+            taxPercent: l.taxPercent || 0,
+            taxAmount: l.taxAmount || 0,
+          })),
+          taxTotals: input.taxTotals,
+          subtotal: subtotal.toNumber(),
+          totalTax: totalTax.toNumber(),
+          totalAmount: totalAmount.toNumber(),
+          customerDocumentType: customer.documentType,
+          customerDocumentNumber: customer.documentNumber,
+          issueDate: input.issueDate,
+          paymentFormCode: input.paymentFormCode || "1",
+          prefix: input.prefix,
+        });
 
-    this.validationsService.validateInvoice({
-      lines: input.lines.map((l) => ({
-        lineExtensionAmount: l.lineExtensionAmount || l.quantity * l.unitPrice,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice,
-        taxCode: l.taxCode || "01",
-        taxPercent: l.taxPercent || 0,
-        taxAmount: l.taxAmount || 0,
-      })),
-      taxTotals: input.taxTotals,
-      subtotal,
-      totalTax,
-      totalAmount,
-      customerDocumentType: customer.documentType,
-      customerDocumentNumber: customer.documentNumber,
-      issueDate: input.issueDate,
-      paymentFormCode: input.paymentFormCode || "1",
-      prefix: input.prefix,
-    });
+        // Reserve consecutive number
+        const { number } = await this.numberingRangesService.reserveNextNumber(
+          tenantId,
+          input.prefix,
+        );
 
-    // Reserve consecutive number
-    const { number } = await this.numberingRangesService.reserveNextNumber(
-      tenantId,
-      input.prefix,
-    );
+        // Generate CUFE
+        const issueDate = new Date(input.issueDate);
+        const cufeInput = {
+          numFac: number,
+          fecFac: issueDate.toISOString().split("T")[0],
+          horFac:
+            issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
+          valBruto: subtotal.toString(),
+          valIva: totalTax.toString(),
+          valAdicional: "0.00",
+          valTotal: totalAmount.toString(),
+          nitEmisor: tenant.nit,
+          dvEmisor: tenant.dv,
+          tipoDocEmisor: tenant.documentType || "31",
+          tipoDocAdquirente: customer.documentType,
+          numDocAdquirente: customer.documentNumber,
+          dvAdquirente: customer.dv || "",
+          softwarePin,
+          ambiente: tenant.environment === "produccion" ? "2" : "1",
+        };
+        const cufe = this.cufeService.generate(cufeInput);
 
-    // Generate CUFE
-    const issueDate = new Date(input.issueDate);
-    const cufeInput = {
-      numFac: number,
-      fecFac: issueDate.toISOString().split("T")[0],
-      horFac:
-        issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
-      valBruto: subtotal.toFixed(2),
-      valIva: totalTax.toFixed(2),
-      valAdicional: "0.00",
-      valTotal: totalAmount.toFixed(2),
-      nitEmisor: tenant.nit,
-      dvEmisor: tenant.dv,
-      tipoDocEmisor: tenant.documentType || "31",
-      tipoDocAdquirente: customer.documentType,
-      numDocAdquirente: customer.documentNumber,
-      dvAdquirente: customer.dv || "",
-      softwarePin,
-      ambiente: tenant.environment === "produccion" ? "2" : "1",
-    };
-    const cufe = this.cufeService.generate(cufeInput);
+        // Build QR URL
+        const qrCode = `https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${cufe}`;
 
-    // Build QR URL
-    const qrCode = `https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${cufe}`;
+        // Create invoice entity
+        const invoice = manager.create(Invoice, {
+          tenantId,
+          number,
+          invoiceType: input.invoiceType || "01",
+          paymentFormCode: input.paymentFormCode || "1",
+          paymentMethodCode: input.paymentMethodCode || "10",
+          issueDate,
+          dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
+          customerId: customer.id,
+          customerName: customer.name,
+          customerDocument: customer.documentNumber,
+          customerDocumentType: customer.documentType,
+          subtotal: subtotal.toNumber(),
+          totalTax: totalTax.toNumber(),
+          totalAmount: totalAmount.toNumber(),
+          status: "draft",
+          cufe,
+          qrCode,
+          idempotencyKey: input.idempotencyKey,
+          requestPayloadHash: payloadHash,
+          responseStatusCode: 201,
+        });
+        const savedInvoice = await manager.save(invoice);
 
-    // Create invoice entity
-    const invoice = this.invoiceRepo.create({
-      tenantId,
-      number,
-      invoiceType: input.invoiceType || "01",
-      paymentFormCode: input.paymentFormCode || "1",
-      paymentMethodCode: input.paymentMethodCode || "10",
-      issueDate,
-      dueDate: input.dueDate ? new Date(input.dueDate) : undefined,
-      customerId: customer.id,
-      customerName: customer.name,
-      customerDocument: customer.documentNumber,
-      customerDocumentType: customer.documentType,
-      subtotal,
-      totalTax,
-      totalAmount,
-      status: "draft",
-      cufe,
-      qrCode,
-      idempotencyKey: input.idempotencyKey,
-    });
-    const savedInvoice = await this.invoiceRepo.save(invoice);
+        // Save lines
+        for (const lineInput of input.lines) {
+          const line = manager.create(InvoiceLine, {
+            tenantId,
+            invoiceId: savedInvoice.id,
+            lineNumber: lineInput.lineNumber,
+            description: lineInput.description,
+            quantity: lineInput.quantity,
+            unitCode: lineInput.unitCode || "94",
+            unitPrice: lineInput.unitPrice,
+            lineExtensionAmount:
+              lineInput.lineExtensionAmount ||
+              lineInput.quantity * lineInput.unitPrice,
+            taxCode: lineInput.taxCode || "01",
+            taxPercent: lineInput.taxPercent || 19,
+            taxAmount: lineInput.taxAmount || 0,
+          });
+          await manager.save(line);
+        }
 
-    // Save lines
-    for (const lineInput of input.lines) {
-      const line = this.lineRepo.create({
-        tenantId,
-        invoiceId: savedInvoice.id,
-        lineNumber: lineInput.lineNumber,
-        description: lineInput.description,
-        quantity: lineInput.quantity,
-        unitCode: lineInput.unitCode || "94",
-        unitPrice: lineInput.unitPrice,
-        lineExtensionAmount:
-          lineInput.lineExtensionAmount ||
-          lineInput.quantity * lineInput.unitPrice,
-        taxCode: lineInput.taxCode || "01",
-        taxPercent: lineInput.taxPercent || 19,
-        taxAmount: lineInput.taxAmount || 0,
-      });
-      await this.lineRepo.save(line);
-    }
+        for (const taxInput of input.taxTotals) {
+          const tax = manager.create(TaxTotal, {
+            tenantId,
+            invoiceId: savedInvoice.id,
+            taxAmount: taxInput.taxAmount,
+            taxableAmount: taxInput.taxableAmount,
+            taxId: taxInput.taxId,
+            taxPercent: taxInput.taxPercent,
+          });
+          await manager.save(tax);
+        }
 
-    // Save tax totals
-    for (const taxInput of input.taxTotals) {
-      const taxTotal = this.taxTotalRepo.create({
-        tenantId,
-        invoiceId: savedInvoice.id,
-        taxId: taxInput.taxId,
-        taxPercent: taxInput.taxPercent,
-        taxableAmount: taxInput.taxableAmount,
-        taxAmount: taxInput.taxAmount,
-      });
-      await this.taxTotalRepo.save(taxTotal);
-    }
+        // Emit outbox event
+        const outboxEvent = manager.create(OutboxEvent, {
+          tenantId,
+          aggregateType: "INVOICE",
+          aggregateId: savedInvoice.id,
+          eventType: "INVOICE_CREATED",
+          payload: {
+            invoiceId: savedInvoice.id,
+            number: savedInvoice.number,
+            cufe: savedInvoice.cufe,
+          },
+          status: "pending",
+        });
+        await manager.save(outboxEvent);
 
-    // Generate XML
-    const xmlData: InvoiceXmlData = {
-      number,
-      issueDate: issueDate.toISOString().split("T")[0],
-      issueTime:
-        issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
-      invoiceType: input.invoiceType || "01",
-      paymentFormCode: input.paymentFormCode || "1",
-      paymentMethodCode: input.paymentMethodCode || "10",
-      currencyCode: "COP",
-      dueDate: input.dueDate,
-      cufe,
-      qrCode,
-      softwareId: softwareCreds.softwareId,
-      softwarePin,
-      environment: tenant.environment,
-      testSetId: softwareCreds.testSetId || "",
-      issuer: {
-        nit: tenant.nit,
-        dv: tenant.dv,
-        name: tenant.name,
-        address: tenant.address || "N/A",
-        phone: tenant.phone || "N/A",
-        email: tenant.email || "N/A",
-        municipalityCode: "11001",
-        fiscalResponsibilities: ["O-99"],
+        const xmlData: InvoiceXmlData = {
+          number,
+          issueDate: issueDate.toISOString().split("T")[0],
+          issueTime:
+            issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
+          invoiceType: input.invoiceType || "01",
+          paymentFormCode: input.paymentFormCode || "1",
+          paymentMethodCode: input.paymentMethodCode || "10",
+          currencyCode: "COP",
+          dueDate: input.dueDate,
+          cufe,
+          qrCode,
+          softwareId: softwareCreds.softwareId,
+          softwarePin,
+          environment: tenant.environment,
+          testSetId: softwareCreds.testSetId || "",
+          issuer: {
+            nit: tenant.nit,
+            dv: tenant.dv,
+            name: tenant.name,
+            address: tenant.address || "N/A",
+            phone: tenant.phone || "N/A",
+            email: tenant.email || "N/A",
+            municipalityCode: "11001",
+            fiscalResponsibilities: ["O-99"],
+          },
+          customer: {
+            documentType: customer.documentType,
+            documentNumber: customer.documentNumber,
+            dv: customer.dv,
+            name: customer.name,
+            address: customer.address || "N/A",
+            phone: customer.phone || "N/A",
+            email: customer.email || "N/A",
+            municipalityCode: customer.municipalityCode || "11001",
+            fiscalResponsibilities: customer.fiscalResponsibilities || ["O-99"],
+          },
+          taxTotals: input.taxTotals,
+          subtotal: subtotal.toNumber(),
+          totalTax: totalTax.toNumber(),
+          totalAmount: totalAmount.toNumber(),
+          lines: input.lines.map((l) => ({
+            lineNumber: l.lineNumber,
+            description: l.description,
+            quantity: l.quantity,
+            unitCode: l.unitCode || "94",
+            unitPrice: l.unitPrice,
+            lineExtensionAmount: l.lineExtensionAmount || l.quantity * l.unitPrice,
+            taxCode: l.taxCode || "01",
+            taxPercent: l.taxPercent || 19,
+            taxAmount: l.taxAmount || 0,
+          })),
+        };
+
+        const xmlContent = await this.xmlBuilderService.buildInvoiceXml(xmlData);
+
+        // Validate against XSD
+        await this.xmlBuilderService.validateAgainstXsd(xmlContent);
+
+        // Save unsigned XML
+        const xmlDir = path.join(this.storagePath, "xml", tenantId);
+        await fs.mkdir(xmlDir, { recursive: true });
+        const xmlFileName = `${number.replace(/\s/g, "_")}.xml`;
+        const xmlPath = path.join(xmlDir, xmlFileName);
+        await fs.writeFile(xmlPath, xmlContent, "utf-8");
+
+        // Sign XML
+        const { pfxBuffer, password } =
+          await this.certificatesService.getDecryptedPfx(cert.id, tenantId);
+        const { signedXml } = await this.signingService.signXmlFromBuffer(
+          xmlContent,
+          pfxBuffer,
+          password,
+        );
+
+        // Save signed XML
+        const signedXmlFileName = `signed_${number.replace(/\s/g, "_")}.xml`;
+        const signedXmlPath = path.join(xmlDir, signedXmlFileName);
+        await fs.writeFile(signedXmlPath, signedXml, "utf-8");
+
+        // Create ZIP for DIAN
+        const zipDir = path.join(this.storagePath, "dian", tenantId);
+        await fs.mkdir(zipDir, { recursive: true });
+        const zipFileName = `${number.replace(/\s/g, "_")}.zip`;
+        const zipPath = path.join(zipDir, zipFileName);
+
+        await new Promise<void>((resolve, reject) => {
+          const output = createWriteStream(zipPath);
+          const archive = archiver("zip", { zlib: { level: 9 } });
+          output.on("close", () => resolve());
+          archive.on("error", reject);
+          archive.pipe(output);
+          archive.append(signedXml, { name: "fa.xml" });
+          archive.finalize();
+        });
+
+        // Generate PDF
+        const pdfDir = path.join(this.storagePath, "pdf", tenantId);
+        await fs.mkdir(pdfDir, { recursive: true });
+        const pdfFileName = `${number.replace(/\s/g, "_")}.pdf`;
+        const pdfPath = path.join(pdfDir, pdfFileName);
+        await this.pdfQrService.generatePdf(
+          number,
+          customer.name,
+          customer.documentNumber,
+          input.issueDate,
+          subtotal.toNumber(),
+          totalTax.toNumber(),
+          totalAmount.toNumber(),
+          cufe,
+          tenant.name,
+          tenant.nit,
+          pdfPath,
+        );
+
+        // Update invoice with paths
+        await manager.update(Invoice, savedInvoice.id, {
+          xmlPath,
+          signedXmlPath,
+          pdfPath,
+          status: "pending",
+        });
+
+        // Create submission record
+        const submission = manager.create(DianSubmission, {
+          tenantId,
+          invoiceId: savedInvoice.id,
+          documentType: "invoice",
+          attemptNumber: 1,
+          status: "pending",
+          requestZipPath: zipPath,
+        });
+        await manager.save(submission);
+
+        const finalInvoice = await manager.findOne(Invoice, {
+          where: { id: savedInvoice.id },
+        });
+
+        await manager.update(Invoice, savedInvoice.id, {
+          responseSnapshot: finalInvoice as any,
+        });
+
+        return { snapshot: finalInvoice, statusCode: 201 };
       },
-      customer: {
-        documentType: customer.documentType,
-        documentNumber: customer.documentNumber,
-        dv: customer.dv,
-        name: customer.name,
-        address: customer.address || "N/A",
-        phone: customer.phone || "N/A",
-        email: customer.email || "N/A",
-        municipalityCode: customer.municipalityCode || "11001",
-        fiscalResponsibilities: customer.fiscalResponsibilities || ["O-99"],
-      },
-      taxTotals: input.taxTotals,
-      subtotal,
-      totalTax,
-      totalAmount,
-      lines: input.lines.map((l) => ({
-        lineNumber: l.lineNumber,
-        description: l.description,
-        quantity: l.quantity,
-        unitCode: l.unitCode || "94",
-        unitPrice: l.unitPrice,
-        lineExtensionAmount: l.lineExtensionAmount || l.quantity * l.unitPrice,
-        taxCode: l.taxCode || "01",
-        taxPercent: l.taxPercent || 19,
-        taxAmount: l.taxAmount || 0,
-      })),
-    };
-
-    const xmlContent = await this.xmlBuilderService.buildInvoiceXml(xmlData);
-
-    // Validate against XSD
-    await this.xmlBuilderService.validateAgainstXsd(xmlContent);
-
-    // Save unsigned XML
-    const xmlDir = path.join(this.storagePath, "xml", tenantId);
-    await fs.mkdir(xmlDir, { recursive: true });
-    const xmlFileName = `${number.replace(/\s/g, "_")}.xml`;
-    const xmlPath = path.join(xmlDir, xmlFileName);
-    await fs.writeFile(xmlPath, xmlContent, "utf-8");
-
-    // Sign XML
-    const { pfxBuffer, password } =
-      await this.certificatesService.getDecryptedPfx(cert.id, tenantId);
-    const { signedXml } = await this.signingService.signXmlFromBuffer(
-      xmlContent,
-      pfxBuffer,
-      password,
     );
-
-    // Save signed XML
-    const signedXmlFileName = `signed_${number.replace(/\s/g, "_")}.xml`;
-    const signedXmlPath = path.join(xmlDir, signedXmlFileName);
-    await fs.writeFile(signedXmlPath, signedXml, "utf-8");
-
-    // Create ZIP for DIAN
-    const zipDir = path.join(this.storagePath, "dian", tenantId);
-    await fs.mkdir(zipDir, { recursive: true });
-    const zipFileName = `${number.replace(/\s/g, "_")}.zip`;
-    const zipPath = path.join(zipDir, zipFileName);
-
-    await new Promise<void>((resolve, reject) => {
-      const output = createWriteStream(zipPath);
-      const archive = archiver("zip", { zlib: { level: 9 } });
-      output.on("close", () => resolve());
-      archive.on("error", reject);
-      archive.pipe(output);
-      archive.append(signedXml, { name: "fa.xml" });
-      archive.finalize();
-    });
-
-    // Generate PDF
-    const pdfDir = path.join(this.storagePath, "pdf", tenantId);
-    await fs.mkdir(pdfDir, { recursive: true });
-    const pdfFileName = `${number.replace(/\s/g, "_")}.pdf`;
-    const pdfPath = path.join(pdfDir, pdfFileName);
-    await this.pdfQrService.generatePdf(
-      number,
-      customer.name,
-      customer.documentNumber,
-      input.issueDate,
-      subtotal,
-      totalTax,
-      totalAmount,
-      cufe,
-      tenant.name,
-      tenant.nit,
-      pdfPath,
-    );
-
-    // Update invoice with paths
-    await this.invoiceRepo.update(savedInvoice.id, {
-      xmlPath,
-      signedXmlPath,
-      pdfPath,
-      status: "pending",
-    });
-
-    // Create submission record
-    const submission = this.submissionRepo.create({
-      tenantId,
-      invoiceId: savedInvoice.id,
-      documentType: "invoice",
-      attemptNumber: 1,
-      status: "pending",
-      requestZipPath: zipPath,
-    });
-    await this.submissionRepo.save(submission);
-
-    // Enqueue BullMQ job
-    await this.submissionQueue.add(
-      "dian-submission",
-      {
-        submissionId: submission.id,
-        invoiceId: savedInvoice.id,
-        tenantId,
-        zipPath,
-      },
-      {
-        attempts:
-          this.configService.get<number>("QUEUE_SUBMISSION_MAX_ATTEMPTS") || 5,
-        backoff: { type: "exponential", delay: 30000 },
-      },
-    );
-
-    return this.invoiceRepo.findOne({
-      where: { id: savedInvoice.id },
-    }) as Promise<Invoice>;
   }
 
   async findAll(

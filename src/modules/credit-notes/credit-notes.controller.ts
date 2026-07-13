@@ -1,5 +1,5 @@
-import { Controller, Post, Get, Param, Body } from "@nestjs/common";
-import { ApiTags, ApiOperation } from "@nestjs/swagger";
+import { Controller, Post, Get, Param, Body, Headers, BadRequestException } from "@nestjs/common";
+import { ApiTags, ApiOperation, ApiHeader } from "@nestjs/swagger";
 import { CreditNotesService } from "./credit-notes.service";
 import {
   IsString,
@@ -35,10 +35,15 @@ export class CreditNotesController {
 
   @Post()
   @ApiOperation({ summary: "Crear nota crédito" })
+  @ApiHeader({ name: "Idempotency-Key", required: true })
   async create(
     @Param("invoiceId") invoiceId: string,
+    @Headers("Idempotency-Key") idempotencyKey: string,
     @Body() dto: CreateCreditNoteDto,
   ) {
-    return this.service.create(invoiceId, dto);
+    if (!idempotencyKey) {
+      throw new BadRequestException("Idempotency-Key header is required");
+    }
+    return this.service.create(invoiceId, { ...dto, idempotencyKey });
   }
 }

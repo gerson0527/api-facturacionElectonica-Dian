@@ -41,6 +41,7 @@ export class DianSubmissionProcessor extends WorkerHost {
       invoiceId: string;
       tenantId: string;
       zipPath: string;
+      eventId?: string;
     }>,
   ): Promise<any> {
     const { submissionId, invoiceId, tenantId, zipPath } = job.data;
@@ -118,7 +119,22 @@ export class DianSubmissionProcessor extends WorkerHost {
   }
 
   @OnWorkerEvent("failed")
-  onFailed(job: Job, err: Error) {
+  async onFailed(job: Job, err: Error) {
     this.logger.error(`Job ${job.id} failed: ${err.message}`);
+    // If maximum attempts are reached, it's a permanent failure (DLQ equivalent)
+    if (job.attemptsMade >= (job.opts.attempts || 1)) {
+      if (job.data && job.data.eventId) {
+        try {
+          const { OutboxEvent } = require("@/database/entities/outbox-event.entity");
+          await this.submissionRepo.manager.update(OutboxEvent, job.data.eventId, {
+            status: "failed",
+            error: err.message,
+          });
+          this.logger.log(`OutboxEvent ${job.data.eventId} marked as failed (DLQ)`);
+        } catch (e: any) {
+          this.logger.error(`Failed to update OutboxEvent for DLQ: ${e.message}`);
+        }
+      }
+    }
   }
 }

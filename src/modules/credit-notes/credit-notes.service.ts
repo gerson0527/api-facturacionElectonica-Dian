@@ -6,12 +6,14 @@ import { Queue } from "bullmq";
 import { ConfigService } from "@nestjs/config";
 import { CreditNote } from "@/database/entities/credit-note.entity";
 import { Invoice } from "@/database/entities/invoice.entity";
+import { OutboxEvent } from "@/database/entities/outbox-event.entity";
 import { NumberingRange } from "@/database/entities/numbering-range.entity";
 import { DianSoftwareCredential } from "@/database/entities/dian-software-credential.entity";
 import { DigitalCertificate } from "@/database/entities/digital-certificate.entity";
 import { DianSubmission } from "@/database/entities/dian-submission.entity";
 import { Tenant } from "@/database/entities/tenant.entity";
 import { CufeService } from "@/services/cufe.service";
+import { Money } from "@/domain/value-objects/money.vo";
 import { SigningService } from "@/services/signing.service";
 import { DianSoapClient } from "@/services/dian-soap.client";
 import {
@@ -25,6 +27,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import archiver from "archiver";
 import { createWriteStream } from "fs";
+import { IdempotencyService } from "@/services/idempotency.service";
 
 @Injectable()
 export class CreditNotesService {
@@ -55,6 +58,7 @@ export class CreditNotesService {
     private readonly numberingRangesService: NumberingRangesService,
     private readonly softwareCredentialsService: SoftwareCredentialsService,
     private readonly certificatesService: CertificatesService,
+    private readonly idempotencyService: IdempotencyService,
   ) {
     this.storagePath =
       this.configService.get<string>("STORAGE_PATH") || "./storage";
@@ -68,8 +72,9 @@ export class CreditNotesService {
       totalAmount: number;
       prefix: string;
       description?: string;
+      idempotencyKey: string;
     },
-  ): Promise<CreditNote> {
+  ): Promise<any> {
     const invoice = await this.invoiceRepo.findOne({
       where: { id: invoiceId },
     });
@@ -78,200 +83,217 @@ export class CreditNotesService {
     }
     const tenantId = invoice.tenantId;
 
-    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
-    if (!tenant) throw new NotFoundException("Tenant no encontrado");
-
-    const softwareCreds = await this.softwareCredRepo.findOne({
-      where: { tenantId },
-    });
-    if (!softwareCreds)
-      throw new NotFoundException("Credenciales DIAN no encontradas");
-    const softwarePin =
-      await this.softwareCredentialsService.decryptPin(softwareCreds);
-
-    const { number } = await this.numberingRangesService.reserveNextNumber(
+    return this.idempotencyService.executeWithIdempotency(
       tenantId,
-      input.prefix,
-    );
+      input.idempotencyKey,
+      input,
+      this.creditNoteRepo,
+      async (payloadHash, manager) => {
+        const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+        if (!tenant) throw new NotFoundException("Tenant no encontrado");
 
-    const issueDate = new Date(input.issueDate);
-    const cufeInput = {
-      numFac: number,
-      fecFac: issueDate.toISOString().split("T")[0],
-      horFac:
-        issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
-      valBruto: input.totalAmount.toFixed(2),
-      valIva: "0.00",
-      valAdicional: "0.00",
-      valTotal: input.totalAmount.toFixed(2),
-      nitEmisor: tenant.nit,
-      dvEmisor: tenant.dv,
-      tipoDocEmisor: tenant.documentType || "31",
-      tipoDocAdquirente: invoice.customerDocumentType,
-      numDocAdquirente: invoice.customerDocument,
-      dvAdquirente: "",
-      softwarePin,
-      ambiente: tenant.environment === "produccion" ? "2" : "1",
-    };
-    const cufe = this.cufeService.generate(cufeInput);
+        const softwareCreds = await this.softwareCredRepo.findOne({
+          where: { tenantId },
+        });
+        if (!softwareCreds)
+          throw new NotFoundException("Credenciales DIAN no encontradas");
+        const softwarePin =
+          await this.softwareCredentialsService.decryptPin(softwareCreds);
 
-    const creditNote = this.creditNoteRepo.create({
-      tenantId,
-      invoiceId,
-      number,
-      issueDate,
-      reasonCode: input.reasonCode,
-      totalAmount: input.totalAmount,
-      status: "pending",
-      cufe,
-    });
-    const saved = await this.creditNoteRepo.save(creditNote);
-
-    const qrCode = `https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${cufe}`;
-    const issueTime =
-      issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00";
-
-    const creditNoteData: CreditNoteXmlData = {
-      number,
-      issueDate: input.issueDate,
-      issueTime,
-      currencyCode: "COP",
-      cufe,
-      qrCode,
-      softwareId: softwareCreds.softwareId,
-      softwarePin,
-      environment: tenant.environment,
-      testSetId: softwareCreds.testSetId || "",
-      issuer: {
-        nit: tenant.nit,
-        dv: tenant.dv,
-        name: tenant.name,
-        address: tenant.address || "",
-        phone: tenant.phone || "",
-        email: tenant.email || "",
-        municipalityCode: "11001",
-        fiscalResponsibilities: ["O-99"],
-      },
-      customer: {
-        documentType: invoice.customerDocumentType,
-        documentNumber: invoice.customerDocument,
-        name: invoice.customerName,
-        address: "",
-        phone: "",
-        email: "",
-        municipalityCode: "11001",
-        fiscalResponsibilities: ["O-99"],
-      },
-      taxTotals: [],
-      subtotal: input.totalAmount,
-      totalTax: 0,
-      totalAmount: input.totalAmount,
-      lines: [
-        {
-          lineNumber: 1,
-          description: input.description || "Nota crédito",
-          quantity: 1,
-          unitCode: "94",
-          unitPrice: input.totalAmount,
-          lineExtensionAmount: input.totalAmount,
-          taxCode: "01",
-          taxPercent: 0,
-          taxAmount: 0,
-        },
-      ],
-      noteType: input.reasonCode,
-      invoiceId: invoice.cufe || invoice.number,
-      invoiceNumber: invoice.number,
-      reasonCode: input.reasonCode,
-      description: input.description,
-    };
-
-    const xmlContent =
-      await this.xmlBuilderService.buildCreditNoteXml(creditNoteData);
-
-    const xmlDir = path.join(this.storagePath, "xml", tenantId);
-    await fs.mkdir(xmlDir, { recursive: true });
-    const xmlPath = path.join(
-      xmlDir,
-      `nc_${number.replace(/[^a-zA-Z0-9]/g, "_")}.xml`,
-    );
-    await fs.writeFile(xmlPath, xmlContent, "utf-8");
-
-    let signedXmlPath: string | undefined;
-    let zipPath: string | undefined;
-
-    const cert = await this.certRepo.findOne({
-      where: { tenantId, isActive: true },
-    });
-    if (cert) {
-      const { pfxBuffer, password } =
-        await this.certificatesService.getDecryptedPfx(cert.id, tenantId);
-      const { signedXml } = await this.signingService.signXmlFromBuffer(
-        xmlContent,
-        pfxBuffer,
-        password,
-      );
-
-      signedXmlPath = path.join(
-        xmlDir,
-        `signed_nc_${number.replace(/[^a-zA-Z0-9]/g, "_")}.xml`,
-      );
-      await fs.writeFile(signedXmlPath, signedXml, "utf-8");
-
-      const zipDir = path.join(this.storagePath, "dian", tenantId);
-      await fs.mkdir(zipDir, { recursive: true });
-      zipPath = path.join(
-        zipDir,
-        `nc_${number.replace(/[^a-zA-Z0-9]/g, "_")}.zip`,
-      );
-
-      await new Promise<void>((resolve, reject) => {
-        const output = createWriteStream(zipPath!);
-        const archive = archiver("zip", { zlib: { level: 9 } });
-        output.on("close", () => resolve());
-        archive.on("error", reject);
-        archive.pipe(output);
-        archive.append(signedXml, { name: "nc.xml" });
-        archive.finalize();
-      });
-
-      const submission = this.submissionRepo.create({
-        tenantId,
-        invoiceId: saved.id,
-        documentType: "credit-note",
-        attemptNumber: 1,
-        status: "pending",
-        requestZipPath: zipPath,
-      });
-      await this.submissionRepo.save(submission);
-
-      await this.submissionQueue.add(
-        "dian-submission",
-        {
-          submissionId: submission.id,
-          invoiceId: saved.id,
+        const { number } = await this.numberingRangesService.reserveNextNumber(
           tenantId,
-          zipPath,
-        },
-        {
-          attempts:
-            this.configService.get<number>("QUEUE_SUBMISSION_MAX_ATTEMPTS") ||
-            5,
-          backoff: { type: "exponential", delay: 30000 },
-        },
-      );
+          input.prefix,
+        );
 
-      this.logger.log(
-        `Nota crédito ${number} encolada para envío DIAN (submission: ${submission.id})`,
-      );
-    }
+        const issueDate = new Date(input.issueDate);
+        const cufeInput = {
+          numFac: number,
+          fecFac: issueDate.toISOString().split("T")[0],
+          horFac:
+            issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00",
+          valBruto: new Money(input.totalAmount).toString(),
+          valIva: "0.00",
+          valAdicional: "0.00",
+          valTotal: new Money(input.totalAmount).toString(),
+          nitEmisor: tenant.nit,
+          dvEmisor: tenant.dv,
+          tipoDocEmisor: tenant.documentType || "31",
+          tipoDocAdquirente: invoice.customerDocumentType,
+          numDocAdquirente: invoice.customerDocument,
+          dvAdquirente: "",
+          softwarePin,
+          ambiente: tenant.environment === "produccion" ? "2" : "1",
+        };
+        const cufe = this.cufeService.generate(cufeInput);
 
-    await this.creditNoteRepo.update(saved.id, {
-      signedXmlPath: signedXmlPath || "",
-      xmlPath,
-    });
-    return this.creditNoteRepo.findOne({
-      where: { id: saved.id },
-    }) as Promise<CreditNote>;
+        const creditNote = manager.create(CreditNote, {
+          tenantId,
+          invoiceId,
+          number,
+          issueDate,
+          reasonCode: input.reasonCode,
+          totalAmount: input.totalAmount,
+          status: "pending",
+          cufe,
+          idempotencyKey: input.idempotencyKey,
+          requestPayloadHash: payloadHash,
+          responseStatusCode: 201,
+        });
+        const saved = await manager.save(creditNote);
+
+        // Emit outbox event
+        const outboxEvent = manager.create(OutboxEvent, {
+          tenantId,
+          aggregateType: "CREDIT_NOTE",
+          aggregateId: saved.id,
+          eventType: "CREDIT_NOTE_CREATED",
+          payload: {
+            creditNoteId: saved.id,
+            number: saved.number,
+            cufe: saved.cufe,
+          },
+          status: "pending",
+        });
+        await manager.save(outboxEvent);
+
+        const qrCode = `https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=${cufe}`;
+        const issueTime =
+          issueDate.toISOString().split("T")[1]?.split(".")[0] || "00:00:00";
+
+        const creditNoteData: CreditNoteXmlData = {
+          number,
+          issueDate: input.issueDate,
+          issueTime,
+          currencyCode: "COP",
+          cufe,
+          qrCode,
+          softwareId: softwareCreds.softwareId,
+          softwarePin,
+          environment: tenant.environment,
+          testSetId: softwareCreds.testSetId || "",
+          issuer: {
+            nit: tenant.nit,
+            dv: tenant.dv,
+            name: tenant.name,
+            address: tenant.address || "",
+            phone: tenant.phone || "",
+            email: tenant.email || "",
+            municipalityCode: "11001",
+            fiscalResponsibilities: ["O-99"],
+          },
+          customer: {
+            documentType: invoice.customerDocumentType,
+            documentNumber: invoice.customerDocument,
+            name: invoice.customerName,
+            address: "",
+            phone: "",
+            email: "",
+            municipalityCode: "11001",
+            fiscalResponsibilities: ["O-99"],
+          },
+          taxTotals: [],
+          subtotal: input.totalAmount,
+          totalTax: 0,
+          totalAmount: input.totalAmount,
+          lines: [
+            {
+              lineNumber: 1,
+              description: input.description || "Nota crédito",
+              quantity: 1,
+              unitCode: "94",
+              unitPrice: input.totalAmount,
+              lineExtensionAmount: input.totalAmount,
+              taxCode: "01",
+              taxPercent: 0,
+              taxAmount: 0,
+            },
+          ],
+          noteType: input.reasonCode,
+          invoiceId: invoice.cufe || invoice.number,
+          invoiceNumber: invoice.number,
+          reasonCode: input.reasonCode,
+          description: input.description,
+        };
+
+        const xmlContent =
+          await this.xmlBuilderService.buildCreditNoteXml(creditNoteData);
+
+        const xmlDir = path.join(this.storagePath, "xml", tenantId);
+        await fs.mkdir(xmlDir, { recursive: true });
+        const xmlPath = path.join(
+          xmlDir,
+          `nc_${number.replace(/[^a-zA-Z0-9]/g, "_")}.xml`,
+        );
+        await fs.writeFile(xmlPath, xmlContent, "utf-8");
+
+        let signedXmlPath: string | undefined;
+        let zipPath: string | undefined;
+
+        const cert = await this.certRepo.findOne({
+          where: { tenantId, isActive: true },
+        });
+        if (cert) {
+          const { pfxBuffer, password } =
+            await this.certificatesService.getDecryptedPfx(cert.id, tenantId);
+          const { signedXml } = await this.signingService.signXmlFromBuffer(
+            xmlContent,
+            pfxBuffer,
+            password,
+          );
+
+          signedXmlPath = path.join(
+            xmlDir,
+            `signed_nc_${number.replace(/[^a-zA-Z0-9]/g, "_")}.xml`,
+          );
+          await fs.writeFile(signedXmlPath, signedXml, "utf-8");
+
+          const zipDir = path.join(this.storagePath, "dian", tenantId);
+          await fs.mkdir(zipDir, { recursive: true });
+          zipPath = path.join(
+            zipDir,
+            `nc_${number.replace(/[^a-zA-Z0-9]/g, "_")}.zip`,
+          );
+
+          await new Promise<void>((resolve, reject) => {
+            const output = createWriteStream(zipPath!);
+            const archive = archiver("zip", { zlib: { level: 9 } });
+            output.on("close", () => resolve());
+            archive.on("error", reject);
+            archive.pipe(output);
+            archive.append(signedXml, { name: "nc.xml" });
+            archive.finalize();
+          });
+
+          const submission = manager.create(DianSubmission, {
+            tenantId,
+            invoiceId: saved.id,
+            documentType: "credit-note",
+            attemptNumber: 1,
+            status: "pending",
+            requestZipPath: zipPath,
+          });
+          await manager.save(submission);
+
+          this.logger.log(
+            `Nota crédito ${number} encolada para envío DIAN (submission: ${submission.id})`,
+          );
+        }
+
+        await manager.update(CreditNote, saved.id, {
+          signedXmlPath: signedXmlPath || "",
+          xmlPath,
+        });
+        
+        const finalNote = await manager.findOne(CreditNote, {
+          where: { id: saved.id },
+        });
+
+        await manager.update(CreditNote, saved.id, {
+          responseSnapshot: finalNote as any,
+        });
+
+        return { snapshot: finalNote, statusCode: 201 };
+      },
+    ).then((result) => result.snapshot);
   }
 }
