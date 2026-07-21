@@ -224,11 +224,30 @@ export class InvoicesService {
         });
 
         // Reserve consecutive number
-        const { number } = await this.numberingRangesService.reserveNextNumber(
-          tenantId,
-          input.prefix,
-          manager,
-        );
+        const { number, rangeId } =
+          await this.numberingRangesService.reserveNextNumber(
+            tenantId,
+            input.prefix,
+            manager,
+          );
+
+        const numberingRange = await manager.findOne(NumberingRange, {
+          where: { id: rangeId },
+        });
+        const formatDate = (d: Date | string | null | undefined): string => {
+          if (!d) return "";
+          const dt = typeof d === "string" ? new Date(d) : d;
+          if (isNaN(dt.getTime())) return "";
+          return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+        };
+        const authorizationPeriod = {
+          startDate:
+            formatDate(numberingRange?.validFrom) ||
+            formatDate(numberingRange?.resolutionDate) ||
+            "2020-01-01",
+          endDate:
+            formatDate(numberingRange?.validTo) || "2099-12-31",
+        };
 
         // Calculate taxes per DIAN category for CUFE
         let valIva = new Money("0");
@@ -392,6 +411,7 @@ export class InvoicesService {
             taxPercent: l.taxPercent || 19,
             taxAmount: l.taxAmount || 0,
           })),
+          authorizationPeriod,
         };
 
         const xmlContent = await this.xmlBuilderService.buildInvoiceXml(xmlData);

@@ -1,41 +1,46 @@
 import { CookieOptions } from "express";
 
-export function getBaseCookieOptions(): CookieOptions {
-  const isProduction = process.env.NODE_ENV === "production";
+const isProduction = process.env.NODE_ENV === "production";
+const isHabilitacion = process.env.NODE_ENV === "habilitacion";
+const isSecureEnv = isProduction || isHabilitacion;
+
+export interface CookieFactoryOptions {
+  isProduction: boolean;
+  isHabilitacion: boolean;
+}
+
+export function buildAccessCookieOptions(): CookieOptions {
   return {
     httpOnly: true,
-    secure: isProduction,
+    secure: isSecureEnv,
     sameSite: "lax",
     path: "/",
   };
 }
 
-export function buildAccessCookieOptions(): CookieOptions {
-  return {
-    ...getBaseCookieOptions(),
-    maxAge: 15 * 60 * 1000, // 15 minutos
-  };
-}
-
 export function buildRefreshCookieOptions(): CookieOptions {
   return {
-    ...getBaseCookieOptions(),
-    path: "/v1/auth/refresh", // Restringido al endpoint de refresh
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
+    httpOnly: true,
+    secure: isSecureEnv,
+    sameSite: "lax",
+    path: "/",
   };
 }
 
 export function buildClearAccessCookieOptions(): CookieOptions {
   return {
-    ...getBaseCookieOptions(),
-    maxAge: 0,
+    httpOnly: true,
+    secure: isSecureEnv,
+    sameSite: "lax",
+    path: "/",
   };
 }
 
 export function buildClearRefreshCookieOptions(): CookieOptions {
   return {
-    ...getBaseCookieOptions(),
-    path: "/v1/auth/refresh",
-    maxAge: 0,
+    httpOnly: true,
+    secure: isSecureEnv,
+    sameSite: "lax",
+    path: "/",
   };
 }

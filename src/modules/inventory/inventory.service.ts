@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { InventoryMovement, MovementType, Product } from '@/database/entities';
@@ -12,7 +12,7 @@ export class InventoryService {
   ) {}
 
   async findAll(tenantId: string) {
-    return this.repo.find({ 
+    return this.repo.find({
       where: { tenant: { id: tenantId } },
       relations: ['product'],
       order: { createdAt: 'DESC' }
@@ -20,33 +20,25 @@ export class InventoryService {
   }
 
   async createMovement(tenantId: string, data: any) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
-    try {
-      // Find product to check and update stock
-      const product = await queryRunner.manager.findOne(Product, { 
-        where: { id: data.productId, tenant: { id: tenantId } }
+    return this.dataSource.transaction(async manager => {
+      const product = await manager.findOne(Product, {
+        where: { id: data.productId, tenant: { id: tenantId } },
+        lock: { mode: 'pessimistic_write' },
       });
-
-      if (!product) throw new BadRequestException('Product not found');
+      if (!product) throw new NotFoundException('Product not found');
 
       const qty = Number(data.quantity);
-      if (data.type === MovementType.OUT && product.stock < qty) {
-        throw new BadRequestException('Insufficient stock');
+      if (data.type === MovementType.OUT && Number(product.stock) < qty) {
+        throw new ConflictException('Insufficient stock');
       }
 
-      // Update product stock
-      if (data.type === MovementType.IN) {
-        product.stock += qty;
-      } else {
-        product.stock -= qty;
-      }
-      await queryRunner.manager.save(Product, product);
+      const newStock = data.type === MovementType.IN
+        ? Number(product.stock) + qty
+        : Number(product.stock) - qty;
 
-      // Create movement record
-      const movement = queryRunner.manager.create(InventoryMovement, {
+      await manager.update(Product, product.id, { stock: newStock });
+
+      const movement = manager.create(InventoryMovement, {
         type: data.type,
         quantity: qty,
         reason: data.reason,
@@ -54,15 +46,7 @@ export class InventoryService {
         product: { id: product.id },
         tenant: { id: tenantId }
       });
-      await queryRunner.manager.save(InventoryMovement, movement);
-
-      await queryRunner.commitTransaction();
-      return movement;
-    } catch (err) {
-      await queryRunner.rollbackTransaction();
-      throw err;
-    } finally {
-      await queryRunner.release();
-    }
+      return manager.save(InventoryMovement, movement);
+    });
   }
 }

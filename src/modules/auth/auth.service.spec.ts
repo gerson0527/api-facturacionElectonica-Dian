@@ -25,6 +25,18 @@ describe("AuthService", () => {
     findOne: jest.fn(),
   };
 
+  const buildQueryBuilder = (affected: number) => ({
+    update: () => ({
+      set: () => ({
+        where: () => ({
+          returning: () => ({
+            execute: () => Promise.resolve({ affected, raw: [] }),
+          }),
+        }),
+      }),
+    }),
+  });
+
   const mockRefreshTokenRepo = {
     findOne: jest.fn(),
     create: jest.fn(),
@@ -33,6 +45,7 @@ describe("AuthService", () => {
     save: jest.fn(),
     find: jest.fn(),
     delete: jest.fn(),
+    createQueryBuilder: jest.fn(),
   };
 
   const buildUser = async (overrides: Partial<User> = {}): Promise<User> =>
@@ -75,7 +88,7 @@ describe("AuthService", () => {
                 return "test-secret-key-for-jwt-testing-purposes-only!";
               if (key === "JWT_REFRESH_SECRET")
                 return process.env.JWT_REFRESH_SECRET;
-              if (key === "JWT_ACCESS_EXPIRATION") return "60m";
+              if (key === "JWT_ACCESS_EXPIRATION") return "15m";
               if (key === "JWT_REFRESH_EXPIRATION")
                 return process.env.JWT_REFRESH_EXPIRATION;
               return undefined;
@@ -135,7 +148,9 @@ describe("AuthService", () => {
     expect(tokens.accessToken).toBeTruthy();
     expect(tokens.refreshToken).toBeTruthy();
 
-    const accessPayload = jwtService.verify(tokens.accessToken);
+    const accessPayload = jwtService.verify(tokens.accessToken, {
+      secret: "test-secret-key-for-jwt-testing-purposes-only!",
+    });
     const refreshPayload = jwtService.verify(tokens.refreshToken, {
       secret: process.env.JWT_REFRESH_SECRET,
     });
@@ -150,8 +165,6 @@ describe("AuthService", () => {
     expect(refreshPayload).toMatchObject({
       sub: user.id,
       tenant_id: user.tenantId,
-      role: user.role,
-      email: user.email,
       type: "refresh",
     });
     expect(refreshPayload.jti).toBeTruthy();
@@ -159,9 +172,54 @@ describe("AuthService", () => {
 
   it("rechaza refresh con token inválido", async () => {
     await expect(authService.refresh("invalid-token")).rejects.toThrow(
-      new UnauthorizedException("Refresh token inválido o expirado"),
+      new UnauthorizedException("Invalid refresh token"),
     );
     expect(mockUserRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it("rechaza refresh si el token no es de tipo refresh", async () => {
+    const accessToken = jwtService.sign(
+      {
+        sub: "user-1",
+        tenant_id: "tenant-1",
+        role: "tenant_admin",
+        email: "test@test.com",
+        type: "access",
+      },
+      { secret: process.env.JWT_REFRESH_SECRET },
+    );
+
+    await expect(authService.refresh(accessToken)).rejects.toThrow(
+      new UnauthorizedException("Token type mismatch"),
+    );
+  });
+
+  it("rechaza refresh si el token fue consumido (atomic)", async () => {
+    const refreshToken = jwtService.sign(
+      {
+        sub: "user-1",
+        tenant_id: "tenant-1",
+        type: "refresh",
+        jti: "test-jti-consumed",
+      },
+      { secret: process.env.JWT_REFRESH_SECRET },
+    );
+    mockRefreshTokenRepo.createQueryBuilder.mockReturnValue(
+      buildQueryBuilder(0),
+    );
+    mockRefreshTokenRepo.findOne.mockResolvedValue({
+      jti: "test-jti-consumed",
+      userId: "user-1",
+      tenantId: "tenant-1",
+      consumedAt: new Date(),
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 100000),
+    });
+    mockRefreshTokenRepo.find.mockResolvedValue([]);
+
+    await expect(authService.refresh(refreshToken)).rejects.toThrow(
+      new UnauthorizedException("Refresh token revoked or expired"),
+    );
   });
 
   it("rechaza refresh si el usuario del token no existe", async () => {
@@ -178,12 +236,18 @@ describe("AuthService", () => {
         secret: process.env.JWT_REFRESH_SECRET,
       },
     );
+    mockRefreshTokenRepo.createQueryBuilder.mockReturnValue(
+      buildQueryBuilder(1),
+    );
     mockRefreshTokenRepo.findOne.mockResolvedValue({
       jti: "test-jti-001",
-      consumedAt: null,
+      userId: "missing-user",
+      tenantId: "tenant-1",
+      consumedAt: new Date(),
       revokedAt: null,
+      expiresAt: new Date(Date.now() + 100000),
     });
-    mockRefreshTokenRepo.save.mockResolvedValue({});
+    mockRefreshTokenRepo.upsert.mockResolvedValue({});
     mockUserRepo.findOne.mockResolvedValue(null);
 
     await expect(authService.refresh(refreshToken)).rejects.toThrow(
@@ -206,16 +270,24 @@ describe("AuthService", () => {
         secret: process.env.JWT_REFRESH_SECRET,
       },
     );
+    mockRefreshTokenRepo.createQueryBuilder.mockReturnValue(
+      buildQueryBuilder(1),
+    );
     mockRefreshTokenRepo.findOne.mockResolvedValue({
       jti: "test-jti-002",
-      consumedAt: null,
+      userId: user.id,
+      tenantId: user.tenantId,
+      consumedAt: new Date(),
       revokedAt: null,
+      expiresAt: new Date(Date.now() + 100000),
     });
-    mockRefreshTokenRepo.save.mockResolvedValue({});
+    mockRefreshTokenRepo.upsert.mockResolvedValue({});
     mockUserRepo.findOne.mockResolvedValue(user);
 
     const tokens = await authService.refresh(refreshToken);
-    const accessPayload = jwtService.verify(tokens.accessToken);
+    const accessPayload = jwtService.verify(tokens.accessToken, {
+      secret: "test-secret-key-for-jwt-testing-purposes-only!",
+    });
     const refreshedPayload = jwtService.verify(tokens.refreshToken, {
       secret: process.env.JWT_REFRESH_SECRET,
     });

@@ -8,6 +8,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { AppConfigModule } from "./config/config.module";
 
 import { TenantContextMiddleware } from "./common/context/tenant-context.middleware";
+import { SentryModule } from "./common/sentry/sentry.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { TenantsModule } from "./modules/tenants/tenants.module";
 import { SoftwareCredentialsModule } from "./modules/software-credentials/software-credentials.module";
@@ -33,6 +34,11 @@ import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { ProductsModule } from "./modules/products/products.module";
 import { SuppliersModule } from "./modules/suppliers/suppliers.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
+import { PinsModule } from "./modules/pins/pins.module";
+import { CashModule } from "./modules/cash/cash.module";
+import { PosModule } from "./modules/pos/pos.module";
+import { BillingModule } from "./modules/billing/billing.module";
+import { BranchesModule } from "./modules/branches/branches.module";
 
 import { TenantMiddleware } from "./common/middleware/tenant.middleware";
 import { RequestLoggingMiddleware } from "./common/middleware/request-logging.middleware";
@@ -81,6 +87,7 @@ import { ScheduleModule } from "@nestjs/schedule";
   imports: [
     ScheduleModule.forRoot(),
     AppConfigModule,
+    SentryModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -91,7 +98,9 @@ import { ScheduleModule } from "@nestjs/schedule";
         username: config.get<string>("DB_USERNAME"),
         password: config.get<string>("DB_PASSWORD"),
         database: config.get<string>("DB_DATABASE"),
-        entities: Object.values(entities),
+        entities: Object.values(entities).filter(
+          (e) => typeof e === 'function' && !!e.name && /^[A-Z]/.test(e.name) && !['MovementType', 'QuotationStatus'].includes(e.name),
+        ) as any[],
         synchronize: config.get<string>("NODE_ENV") === "development",
         logging: config.get<string>("NODE_ENV") === "development",
         ssl: getSslConfig(config),
@@ -173,7 +182,16 @@ import { ScheduleModule } from "@nestjs/schedule";
     ProductsModule,
     SuppliersModule,
     InventoryModule,
-    TypeOrmModule.forFeature(Object.values(entities)),
+    PinsModule,
+    CashModule,
+    PosModule,
+    BillingModule,
+    BranchesModule,
+    TypeOrmModule.forFeature(
+      (Object.values(entities).filter(
+        (e) => typeof e === 'function' && !!e.name && /^[A-Z]/.test(e.name) && !['MovementType', 'QuotationStatus'].includes(e.name),
+      )) as any[],
+    ),
   ],
   providers: [
     DianSubmissionProcessor,

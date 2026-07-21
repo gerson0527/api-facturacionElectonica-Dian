@@ -1,5 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import * as crypto from "crypto";
+import {
+  formatDecimalCol,
+  formatDateCol,
+  formatTimeCol,
+} from "./dian-format.util";
 
 export interface CufeInput {
   numFac: string;
@@ -22,14 +27,19 @@ export interface CufeInput {
 @Injectable()
 export class CufeService {
   generate(input: CufeInput): string {
-    const concatenated = [
+    const fecDate = new Date(input.fecFac);
+    const horSource = input.horFac
+      ? new Date(`${input.fecFac}T${input.horFac}`)
+      : fecDate;
+
+    const parts = [
       input.numFac,
-      input.fecFac,
-      input.horFac,
-      input.valBruto,
-      input.valIva,
-      input.valAdicional,
-      input.valTotal,
+      formatDateCol(fecDate),
+      formatTimeCol(horSource),
+      formatDecimalCol(input.valBruto),
+      formatDecimalCol(input.valIva),
+      formatDecimalCol(input.valAdicional),
+      formatDecimalCol(input.valTotal),
       input.nitEmisor,
       input.dvEmisor,
       input.tipoDocEmisor,
@@ -38,7 +48,9 @@ export class CufeService {
       input.dvAdquirente,
       input.softwarePin,
       input.ambiente,
-    ].join("");
+    ];
+
+    const concatenated = parts.join("");
 
     return crypto
       .createHash("sha384")
@@ -48,7 +60,6 @@ export class CufeService {
   }
 
   generateCude(input: CufeInput): string {
-    // CUDE is exactly the same algorithm, but for events, valBruto, valIva, valAdicional, valTotal are usually "0.00"
     return this.generate(input);
   }
 }

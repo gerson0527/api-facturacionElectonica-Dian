@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, InternalServerErrorException } from "@nestjs/common";
 import { create } from "xmlbuilder2";
 import { XMLBuilder } from "xmlbuilder2/lib/interfaces";
 import * as fs from "fs/promises";
@@ -65,11 +65,17 @@ export interface DocumentXmlData {
   lines: LineXmlData[];
 }
 
+export interface AuthorizationPeriodData {
+  startDate: string;
+  endDate: string;
+}
+
 export interface InvoiceXmlData extends DocumentXmlData {
   invoiceType: string;
   paymentFormCode: string;
   paymentMethodCode: string;
   dueDate?: string;
+  authorizationPeriod?: AuthorizationPeriodData;
 }
 
 export interface CreditNoteXmlData extends DocumentXmlData {
@@ -78,6 +84,7 @@ export interface CreditNoteXmlData extends DocumentXmlData {
   invoiceNumber: string;
   reasonCode: string;
   description?: string;
+  authorizationPeriod?: AuthorizationPeriodData;
 }
 
 export interface DebitNoteXmlData extends DocumentXmlData {
@@ -86,6 +93,7 @@ export interface DebitNoteXmlData extends DocumentXmlData {
   invoiceNumber: string;
   reasonCode: string;
   description?: string;
+  authorizationPeriod?: AuthorizationPeriodData;
 }
 
 // Static maps removed in favor of CatalogsService
@@ -366,6 +374,8 @@ export class XmlBuilderService {
   private buildInvoiceControl(parent: XMLBuilder, data: DocumentXmlData): void {
     const prefix = data.number.split(/\d/)[0];
     const authNumber = data.number;
+    const authPeriod = (data as { authorizationPeriod?: AuthorizationPeriodData })
+      .authorizationPeriod;
 
     parent
       .ele("sts:InvoiceControl")
@@ -374,10 +384,10 @@ export class XmlBuilderService {
       .up()
       .ele("sts:AuthorizationPeriod")
       .ele("cbc:StartDate")
-      .txt("2020-01-01")
+      .txt(authPeriod?.startDate || "2020-01-01")
       .up()
       .ele("cbc:EndDate")
-      .txt("2099-12-31")
+      .txt(authPeriod?.endDate || "2099-12-31")
       .up()
       .up()
       .ele("sts:AuthorizedInvoices")
@@ -956,14 +966,23 @@ export class XmlBuilderService {
       const valid = xmlDoc.validate(xsdDoc);
       if (!valid) {
         const errors = xmlDoc.validationErrors;
-        this.logger.error(
-          `XSD validation errors: ${errors.map((e: any) => e.message).join("; ")}`,
+        const detail = errors
+          .map((e: any) => e.message)
+          .join("; ");
+        this.logger.error(`XSD validation failed: ${detail}`);
+        throw new InternalServerErrorException(
+          `XML does not conform to DIAN XSD: ${detail}`,
         );
       }
-      return valid;
-    } catch (err) {
-      this.logger.warn(`XSD validation skipped: ${(err as Error).message}`);
       return true;
+    } catch (err) {
+      if (err instanceof InternalServerErrorException) {
+        throw err;
+      }
+      this.logger.error(`XSD validation failed: ${(err as Error).message}`);
+      throw new InternalServerErrorException(
+        `XML does not conform to DIAN XSD: ${(err as Error).message}`,
+      );
     }
   }
 }

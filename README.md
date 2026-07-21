@@ -1,57 +1,92 @@
-# API Facturación Electrónica DIAN — SaaS Multiempresa (100% Producción)
+# API Facturación Electrónica DIAN — SaaS Multiempresa
 
-API SaaS multiempresa de grado de producción para la facturación electrónica colombiana. Cumple de forma estricta con el **Anexo Técnico 1.9 de la DIAN**, garantizando precisión fiscal, concurrencia masiva y alta tolerancia a fallos.
+API SaaS multiempresa de grado de producción para la facturación electrónica colombiana. Cumple con el **Anexo Técnico de la DIAN**, garantizando precisión fiscal, concurrencia masiva, aislamiento estricto entre tenants y alta tolerancia a fallos.
 
-Desarrollada con **NestJS 11**, **TypeScript 5.9** y **PostgreSQL 16**, implementa un ciclo completo y resiliente: generación XML UBL 2.1 estricta, cálculo exacto de CUFE/CUDE, firmas digitales XAdES-EPES nativas, WS-Security SOAP para transmisión asíncrona a la DIAN, manejo idempotente, parseo de ApplicationResponse, y representación gráfica en PDF.
-
----
-
-## 🚀 Características Clave y Cumplimiento Normativo
-
-*   **SaaS Multiempresa Nativo (Tenant-aware):** Arquitectura 100% particionada. Todas las operaciones y transacciones están aisladas a nivel de base de datos usando **PostgreSQL Row-Level Security (RLS)**.
-*   **Idempotencia Robusta:** Algoritmo de idempotencia con hash estricto del payload y constraints en la base de datos que evita absolutamente la doble emisión en escenarios de alta concurrencia o *network retries*.
-*   **Resiliencia y Consistencia (Transactional Outbox):** Uso del patrón Outbox transaccional para evitar facturas "fantasma". La emisión del documento y la programación de la transmisión ocurren de manera atómica, coordinado por **BullMQ** y **Redis**.
-*   **Precisión Fiscal Absoluta:** Cálculos tributarios implementados mediante el *Value Object* `Money` (`decimal.js`), eliminando por completo los errores de punto flotante de JavaScript (IEEE 754) e implementando políticas de redondeo DIAN (`HALF_EVEN`).
-*   **Firma y WS-Security Estricto:** 
-    *   Firma de documentos XML con estándar **XAdES-EPES** evitando conflictos de canonicalización (`xml-exc-c14n#`).
-    *   Cifrado y firma de cabeceras SOAP (**WS-Security OASIS**) con `Timestamp` válido por 5 minutos, garantizando rechazo nulo por seguridad.
-*   **Parseo de Respuestas Oficiales:** Recepción asíncrona, extracción de adjuntos (`AttachedDocument`) y parseo detallado del XML `ApplicationResponse` mapeando las reglas de rechazo precisas (ej. `FAD09`, `FAD15`).
-*   **DevSecOps y Seguridad AppSec:** 
-    *   **Cifrado en Reposo (AES-256-GCM):** Los certificados digitales (`.p12` / `.pfx`), sus contraseñas y PINs de software DIAN están totalmente encriptados en base de datos.
-    *   **Auditoría Inmutable:** Registro de trazabilidad de los flujos críticos.
-    *   **Hardening Docker:** Imágenes minimalistas non-root sin PM2 innecesario.
+Desarrollada con **NestJS 11**, **TypeScript 5.9** y **PostgreSQL 16**, implementa un ciclo completo y resiliente: generación XML UBL 2.1, cálculo exacto de CUFE/CUDE, firmas digitales XAdES, SOAP WS-Security para transmisión asíncrona a la DIAN, manejo idempotente, parseo de ApplicationResponse, y representación gráfica en PDF.
 
 ---
 
-## 🏗️ Arquitectura y Stack Tecnológico
+## 🚀 Características Clave
 
-| Componente | Tecnología Principal |
+### Cumplimiento Fiscal DIAN
+- **SaaS Multiempresa Nativo (Tenant-aware):** Todas las operaciones y transacciones están aisladas usando **PostgreSQL Row-Level Security (RLS)**.
+- **Idempotencia Robusta:** Hash SHA-256 del payload y constraints UNIQUE en BD que evitan la doble emisión en concurrencia o reintentos de red.
+- **Resiliencia y Consistencia (Transactional Outbox):** Patrón Outbox transaccional coordinado por **BullMQ** y **Redis**, con **DLQ** (`dian_dlq`) para fallos permanentes.
+- **Precisión Fiscal Absoluta:** Cálculos tributarios con `decimal.js` (Value Object `Money`), redondeo `HALF_EVEN` DIAN.
+- **Firma XAdES + WS-Security:** RSA-SHA256 sobre XML canonicalizado + SOAP 1.2 con Timestamp válido.
+- **Parseo de ApplicationResponse:** Extracción de adjuntos y mapeo de reglas de rechazo (`FAD09`, `FAD15`, etc.).
+- **CUFE/CUDE:** SHA-384, decimales con coma, fecha/hora Colombia `YYYY-MM-DDTHH:MM:SS-05:00`.
+- **Validación XSD antes de envío** con `libxmljs2`; aborta si el XML no es conforme.
+
+### Seguridad y DevSecOps
+- **Cifrado en Reposo (AES-256-GCM):** Certificados `.p12`, contraseñas y PINs DIAN encriptados.
+- **JWT en cookies `HttpOnly` + `Secure` + `SameSite=Lax`** con prefijo `__Host-` en producción.
+- **Refresh tokens atómicos** (`UPDATE … WHERE consumed_at IS NULL RETURNING`) con detección de reuse y revocación de familia.
+- **Password hashing** con **bcrypt** cost 10; PIN de usuarios con **Argon2id**, lockout 3/15 min.
+- **Throttling granular** por `@Throttle` (login, refresh, certificados, facturas, etc.) con `ThrottlerGuard` global.
+- **Helmet + CSP + HSTS** en producción; **CORS** con allowlist por env.
+- **Sentry** integrado con redacción automática de `password`, `pin`, `refreshToken` y cookies de auth.
+- **Rate-limit** en `POST /v1/auth/pin/verify` (3/min) y `POST /v1/auth/pin/set` (5/min).
+
+### Multitenancy
+- **Postgres RLS** activo en 18+ tablas con `current_setting('app.tenant_id', true)::uuid`.
+- **`tenantId` desde JWT, nunca del cliente**: `TenantGuard` endurecido rechaza `x-tenant-id` salvo `super_admin`.
+- **`Membership`** con UNIQUE(user, tenant) — un usuario puede pertenecer a varios tenants con rol distinto.
+- **CHECK constraint** en `products.stock >= 0` (no inventario negativo).
+- **Tests E2E de aislamiento** en `test/tenant-isolation.e2e-spec.ts`.
+
+### POS / Caja / Inventario
+- **`POST /v1/pos/sales`** transaccional: descuenta stock, crea factura, registra movimiento de caja, kardex — todo en una sola transacción SQL.
+- **Lock pesimista** en productos (`FOR UPDATE`) y sesiones de caja.
+- **`CashRegister` / `CashSession` / `CashMovement`** modeladas; arqueo calcula `expectedAmount` vs `closingAmount` con `difference`.
+
+### Suscripciones SaaS
+- **Módulo `billing`**: `Plan`, `Subscription`, `BillingEvent`.
+- **4 planes sembrados**: `free` (10 fac/mes, 1 caja), `basic` (100, 1 caja), `pro` (1000, 3 cajas), `enterprise` (ilimitado).
+- **`POST /v1/billing/webhooks/mercadopago`** con verificación de firma `x-signature` + idempotencia por `mpPaymentId`.
+- **Cron `BillingSuspensionService`**: cancela trials expirados, suspende `past_due` > 7 días.
+- **Multi-sucursal**: `Branch`, `Warehouse`, `ProductStock` con UNIQUE(product, branch, warehouse).
+
+---
+
+## 🏗️ Arquitectura y Stack
+
+| Componente | Tecnología |
 |---|---|
-| **Framework** | NestJS 11, TypeScript 5.9 (Strict Mode) |
-| **Persistencia** | PostgreSQL 16 con TypeORM 0.3 + RLS (Row Level Security) |
-| **Colas Asíncronas** | BullMQ 5 + Redis 7 |
-| **Motor UBL y XML** | `xmlbuilder2` (Construcción pura), `libxmljs2` (Validación XSD) |
-| **Criptografía Fiscal** | `node-forge` + `crypto` nativo de Node.js (RSA-SHA256, XAdES-EPES) |
-| **Cliente SOAP** | Axios interceptado para envelopes estandarizados SOAP 1.2 + WS-Security |
-| **Generación PDF** | PDFKit + QRCode (Catálogo DIAN VPFE) |
-| **Autenticación** | Passport-JWT (access 60min, refresh 7d) |
-| **Contenedores** | Docker Compose optimizado para producción |
+| **Framework** | NestJS 11 + TypeScript 5.9 (Strict) |
+| **Persistencia** | PostgreSQL 16 + TypeORM 0.3 + RLS |
+| **Colas** | BullMQ 5 + Redis 7 |
+| **Motor XML** | `xmlbuilder2` + `libxmljs2` (validación XSD) |
+| **Criptografía** | `node-forge` (XAdES), `crypto` nativo, `argon2` (PINs) |
+| **Cliente SOAP** | `axios` + WS-Security OASIS |
+| **PDF** | PDFKit + QRCode (DIAN VPFE) |
+| **Auth** | Passport-JWT + cookies HttpOnly |
+| **Pagos** | MercadoPago SDK (REST) |
+| **Observabilidad** | Sentry (`@sentry/node`) + cron `@nestjs/schedule` |
+| **Contenedores** | Docker multi-stage non-root |
 
 ---
 
-## 🗄️ Esquema Multi-Tenant (13 Entidades RLS)
+## 🗄️ Modelo de Datos
 
-Todas las entidades heredan de `TenantEntity` y están segregadas por `tenantId`.
+### Multi-Tenant (`tenant_id` en todas las entidades operativas)
+- **Administración:** `tenants`, `users`, `memberships`
+- **Auth:** `refresh_tokens`
+- **Configuración DIAN:** `dian_software_credentials`, `digital_certificates`, `numbering_ranges` (con `valid_from`/`valid_to`)
+- **Catálogos:** `customers`
+- **Documentos:** `invoices`, `invoice_lines`, `tax_totals`, `credit_notes`, `debit_notes`
+- **POS:** `cash_registers`, `cash_sessions`, `cash_movements`, `inventory_movements`
+- **Sucursales:** `branches`, `warehouses`, `product_stocks`
+- **Trazabilidad:** `dian_submissions`, `dian_dlq`, `audit_events`, `radian_events`
+- **Webhooks:** `webhook_endpoints`, `webhook_deliveries`
+- **SaaS Billing:** `plans`, `subscriptions`, `billing_events`
+- **Seguridad:** `user_pins`
 
-*   **Administración:** `tenants`, `users` (RBAC: `super_admin`, `tenant_admin`, etc.).
-*   **Configuración DIAN:** `dian_software_credentials`, `digital_certificates`, `numbering_ranges` (Bloqueo Pesimista).
-*   **Catálogos:** `customers`.
-*   **Documentos:** `invoices`, `invoice_lines`, `tax_totals`, `credit_notes`, `debit_notes`.
-*   **Trazabilidad:** `dian_submissions` (Dead-letter Queue y reintentos), `audit_events`.
+Todas las entidades con `tenant_id` tienen **RLS** activo.
 
 ---
 
-## ⚙️ Flujo Asíncrono de Emisión (Worker Background)
+## ⚙️ Flujo Asíncrono de Emisión
 
 ```text
 [CLIENTE API] → (1. Payload Idempotente) → [API INVOICES]
@@ -59,94 +94,227 @@ Todas las entidades heredan de `TenantEntity` y están segregadas por `tenantId`
 (2. RLS + DB Transaction) ←────────────────────┘
 │ → Genera CUFE/XML
 │ → Guarda Factura (DRAFT)
-│ → Emite OutboxEvent 
+│ → Emite OutboxEvent
 └──────────────────────────→ [OUTBOX RELAY] → (3. Despacha Job) → [BULLMQ: dian-submission]
-                                                                     │
-[WORKER NODE] ←──────────────────────────────────────────────────────┘
-│ → 4. Firma XAdES-EPES del XML
+                                                                   │
+[WORKER NODE] ←───────────────────────────────────────────────────┘
+│ → 4. Firma XAdES del XML
 │ → 5. Empaqueta en ZIP
-│ → 6. Firma WS-Security del Envelope SOAP
-│ → 7. SendBillAsync (DIAN WCF)
+│ → 6. WS-Security del Envelope SOAP
+│ → 7. SendBillAsync (DIAN)
 │ → 8. Guarda TrackId
 └──────────────────────────→ [BULLMQ: dian-status] (Retries exponenciales)
                                    │
 [WORKER STATUS] ←──────────────────┘
-│ → 9. GetStatusZip a la DIAN
+│ → 9. GetStatusZip
 │ → 10. Parsea UBL ApplicationResponse
-│ → 11. Valida reglas FAD (Aceptado/Rechazado)
-│ → 12. Actualiza Status Factura (ACCEPTED)
+│ → 11. Valida reglas FAD
+│ → 12. Actualiza Status Factura (ACCEPTED / REJECTED)
 ```
 
 ---
 
-## 📡 Endpoints Destacados
+## 📡 Endpoints
 
-*   **Invoices:**
-    *   `POST /v1/invoices` → Crea factura de manera idempotente (`idempotencyKey`).
-    *   `GET /v1/invoices/:id/status` → Verifica trazabilidad en la DIAN.
-    *   `POST /v1/invoices/:id/retry` → Reintenta transmisión para rechazos de red.
-    *   `GET /v1/invoices/:id/xml` y `/pdf` → Obtiene representaciones oficiales.
-*   **Configuración Segura:**
-    *   `POST /v1/tenants/:id/certificates` → Sube un P12 que el servidor cifra inmediatamente a AES-256-GCM.
-    *   `POST /v1/tenants/:id/software-credentials` → Define entorno y TestSetId.
-*   **Maestros Fiscales:**
-    *   `POST /v1/catalog/...` → Administración de ítems y listas maestras.
+### Auth
+- `POST /v1/auth/login` — Login con `email` + `password`
+- `POST /v1/auth/refresh` — Refresca access token (rotación atómica)
+- `POST /v1/auth/logout` — Revoca refresh token en BD
+- `GET  /v1/auth/me` — Datos del usuario actual
+- `POST /v1/auth/pin/set` — Configura PIN (Argon2id, throttled 5/min)
+- `POST /v1/auth/pin/verify` — Verifica PIN (throttled 3/min, audit log)
+
+### Invoices
+- `POST /v1/invoices` — Crea factura (idempotente vía `idempotencyKey`)
+- `GET  /v1/invoices/:id/status` — Trazabilidad DIAN
+- `POST /v1/invoices/:id/retry` — Reintenta transmisión
+- `GET  /v1/invoices/:id/xml` / `/pdf`
+
+### POS
+- `POST /v1/pos/sales` — Venta transaccional (Invoice + InventoryMovement + CashMovement)
+- `GET  /v1/pos/sales/by-session/:sessionId`
+
+### Cash
+- `GET  /v1/cash-registers`
+- `POST /v1/cash-registers`
+- `GET  /v1/cash-sessions` / `GET /v1/cash-sessions/current`
+- `POST /v1/cash-sessions` (abrir) / `:id/close` (cerrar)
+- `GET  /v1/cash-sessions/:id/movements`
+
+### Maestros
+- `GET  /v1/customers` / `POST` / `GET :id`
+- `GET  /v1/products` / `POST`
+- `GET  /v1/suppliers` / `POST`
+- `GET  /v1/inventory/movements`
+
+### Sucursales
+- `GET  /v1/branches` / `POST`
+- `GET  /v1/branches/:id/warehouses` / `POST`
+
+### Billing (SaaS)
+- `GET  /v1/billing/plans`
+- `GET  /v1/billing/subscription`
+- `POST /v1/billing/subscription/start-trial`
+- `POST /v1/billing/subscription/change-plan`
+- `POST /v1/billing/subscription/cancel`
+- `POST /v1/billing/checkout` (crea Preference MercadoPago)
+- `POST /v1/billing/webhooks/mercadopago` (webhook firmado)
+
+### Configuración DIAN
+- `POST /v1/tenants/:id/certificates` — Sube `.p12` (cifrado AES-256-GCM)
+- `POST /v1/tenants/:id/software-credentials`
+- `POST /v1/numbering-ranges` — Crear resolución
+
+### Salud
+- `GET  /health` — Health check general
+- `GET  /health/live` — Liveness probe
+- `GET  /health/ready` — Readiness probe (Postgres)
 
 ---
 
-## 🚀 Despliegue Rápido (Local / Desarrollo)
+## ⚙️ Configuración
 
-### 1. Requisitos
-*   Node.js 22.18.0+
-*   PostgreSQL 16+
-*   Redis 7+
-*   Docker & Docker Compose
-
-### 2. Configuración
-Clona y configura las variables de entorno.
-
+### Variables de entorno (`.env`)
 ```bash
-git clone https://github.com/gerson0527/api-facturacionElectonica-Dian.git
-cd api-facturacionElectonica-Dian
+NODE_ENV=production
+PORT=8000
+
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=         # 32+ caracteres
+DB_DATABASE=api_facturacion
+DB_CA_CERT=          # requerido en producción
+
+JWT_ACCESS_SECRET=   # 32+ caracteres
+JWT_REFRESH_SECRET=  # 32+ caracteres
+JWT_ACCESS_EXPIRATION=15m
+JWT_REFRESH_EXPIRATION=7d
+
+ENCRYPTION_KEY=      # 64 hex chars (32 bytes)
+
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+CORS_ALLOWED_ORIGINS=https://app.sas-colombia.com
+
+MP_ACCESS_TOKEN=
+MP_WEBHOOK_SECRET=
+
+PUBLIC_BACKEND_URL=https://api.sas-colombia.com
+
+SENTRY_DSN=
+```
+
+---
+
+## 🚀 Despliegue
+
+### Requisitos
+- Node.js 22.18.0+
+- PostgreSQL 16+
+- Redis 7+
+- Docker & Docker Compose
+
+### Local
+```bash
 npm install
-cp .env.example .env # (Asegúrate de llenar ENCRYPTION_KEY 64 hex chars y URLs DIAN)
-```
-
-### 3. Migraciones y Seeders
-```bash
+cp .env.example .env
 npm run build
 npm run typeorm:migration:run
 npm run seed:run
+npm run start:dev          # API
+npm run start:worker       # BullMQ worker (otra terminal)
 ```
 
-### 4. Ejecución (Modo Independiente o Docker)
+### Docker
 ```bash
-# Desarrollo: API Core
-npm run start:dev
-
-# En otra terminal: BullMQ Worker (Para firmar y enviar asíncronamente a DIAN)
-npm run start:worker
-
-# O usa Docker Compose
 docker compose up -d --build
 ```
 
-### 5. Documentación OpenAPI
-Ingresa a `http://localhost:3000/docs` para ver Swagger con todos los modelos y flujos detallados.
+### Documentación OpenAPI
+- Swagger UI: `http://localhost:8000/docs`
 
 ---
 
-## 🧪 Pruebas y Fixtures (Testing)
-El repositorio cuenta con validación profunda y automatizada que garantiza el 100% de cumplimiento con las fórmulas DIAN y algoritmos criptográficos:
+## 🧪 Pruebas
+
 ```bash
-npm run test:dian-fixtures  # Prueba CUFE, Firmas y Cálculo Exacto
-npm run test:e2e            # E2E multiempresa y RLS
-npm test                    # Pruebas unitarias de dominio
+npm test                    # Unit tests (dominio, servicios)
+npm run test:e2e            # E2E completos
+npm run test:integration    # Integración con DB
+npm run test:security       # Tests de seguridad (auth, JWT, RLS)
+npm run test:concurrency    # Concurrencia (overselling, idempotencia)
+npm run test:dian-fixtures  # CUFE/CUDE/XAdES contra fixtures
+npm run test:signature      # Firma digital
+npm test -- tenant-isolation # Aislamiento multi-tenant (BOLA/BFLA)
 ```
 
 ---
 
-## 📄 Licencia y Autores
+## 📁 Estructura
 
-**Autor:** Repositorio mantenido y evolucionado para entornos fiscales multiempresa colombianos.
+```
+api-Dian/
+├── src/
+│   ├── main.ts                          # Bootstrap con Helmet/CSP/HSTS
+│   ├── app.module.ts                    # Configuración global (Throttler, RLS, Schedule)
+│   ├── config/                          # env.validation.ts (Joi)
+│   ├── common/
+│   │   ├── decorators/                  # @Roles, @TenantId, @CurrentUser
+│   │   ├── guards/                      # JwtAuth, Tenant, Roles
+│   │   ├── middleware/                  # tenant, context, request-logging
+│   │   ├── interceptors/                # TenantRls
+│   │   ├── database/                    # TenantRlsService
+│   │   ├── sentry/                      # SentryService con redacción
+│   │   ├── cookie.factory.ts            # Cookies __Host-* endurecidas
+│   │   └── ttl.util.ts
+│   ├── database/
+│   │   ├── entities/                    # 23+ entidades con RLS
+│   │   └── migrations/                  # Migraciones TypeORM
+│   ├── modules/
+│   │   ├── auth/                        # JWT + refresh atómico
+│   │   ├── pins/                        # PIN Argon2
+│   │   ├── billing/                     # SaaS + MercadoPago + cron
+│   │   ├── customers/
+│   │   ├── products/
+│   │   ├── suppliers/
+│   │   ├── invoices/
+│   │   ├── credit-notes/                # Validación de factura accepted
+│   │   ├── debit-notes/                 # Validación de factura accepted
+│   │   ├── inventory/
+│   │   ├── pos/                         # Venta transaccional
+│   │   ├── cash/                        # CashRegister/Session/Movement
+│   │   ├── branches/                    # Multi-sucursal
+│   │   ├── catalogs/                    # Catálogos DIAN + cache
+│   │   ├── certificates/                # Cifrado AES-256-GCM
+│   │   ├── software-credentials/
+│   │   ├── numbering-ranges/            # Lock pesimista + vigencia
+│   │   ├── tenants/
+│   │   ├── dian-submissions/
+│   │   ├── dlq/
+│   │   ├── queue/                       # BullMQ workers
+│   │   ├── webhooks/                    # Webhooks salientes
+│   │   ├── radian/
+│   │   ├── audit/
+│   │   ├── mailer/
+│   │   ├── onboarding/
+│   │   ├── dashboard/
+│   │   ├── payments/
+│   │   ├── quotations/
+│   │   └── health/
+│   └── services/                        # CUFE/CUDE/XAdES/XML/PDF/Crypto
+├── test/
+│   ├── tenant-isolation.e2e-spec.ts     # BOLA/BFLA
+│   ├── app.e2e-spec.ts
+│   ├── app.security-spec.ts
+│   └── ...
+└── docker-compose.yml
+```
+
+---
+
+## 📄 Licencia
+
+**Autor:** Repositorio mantenido para SaaS multiempresa colombiano.
 **Licencia:** MIT.

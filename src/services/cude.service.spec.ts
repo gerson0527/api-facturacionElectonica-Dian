@@ -17,7 +17,7 @@ describe("CudeService", () => {
     const input: CudeInput = {
       numDoc: "NC990000001",
       fecDoc: "2020-01-01",
-      horDoc: "12:00:00-05:00",
+      horDoc: "17:00:00",
       valBruto: "100000.00",
       valIva: "19000.00",
       valAdicional: "0.00",
@@ -33,14 +33,23 @@ describe("CudeService", () => {
       motivo: "1",
     };
 
+    const fecDate = new Date(input.fecDoc);
+    const horSource = new Date(`${input.fecDoc}T${input.horDoc}`);
+    const fmtDec = (v: string) =>
+      parseFloat(v).toFixed(2).replace(".", ",");
+    const fmtDate = (d: Date) =>
+      `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+    const fmtTime = (d: Date) =>
+      `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")}-05:00`;
+
     const concatenated = [
       input.numDoc,
-      input.fecDoc,
-      input.horDoc,
-      input.valBruto,
-      input.valIva,
-      input.valAdicional,
-      input.valTotal,
+      fmtDate(fecDate),
+      fmtTime(horSource),
+      fmtDec(input.valBruto),
+      fmtDec(input.valIva),
+      fmtDec(input.valAdicional),
+      fmtDec(input.valTotal),
       input.nitEmisor,
       input.dvEmisor,
       input.tipoDocAdquirente,
@@ -52,7 +61,11 @@ describe("CudeService", () => {
       input.motivo,
     ].join("");
 
-    const expectedHash = crypto.createHash("sha384").update(concatenated, "utf8").digest("hex").toUpperCase();
+    const expectedHash = crypto
+      .createHash("sha384")
+      .update(concatenated, "utf8")
+      .digest("hex")
+      .toUpperCase();
 
     const cude = service.generate(input);
     expect(cude).toBe(expectedHash);

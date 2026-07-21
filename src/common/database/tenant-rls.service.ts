@@ -1,35 +1,22 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { InjectDataSource } from "@nestjs/typeorm";
-import { DataSource } from "typeorm";
+import { Injectable } from '@nestjs/common';
+import { DataSource, EntityManager } from 'typeorm';
 
 @Injectable()
 export class TenantRlsService {
-  private readonly logger = new Logger(TenantRlsService.name);
-
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(private dataSource: DataSource) {}
 
   async setSessionTenant(tenantId: string): Promise<void> {
-    try {
-      await this.dataSource.query(
-        `SELECT set_config('app.tenant_id', $1, false)`,
-        [tenantId],
-      );
-    } catch (err) {
-      this.logger.error(
-        `Error setting app.tenant_id: ${(err as Error).message}`,
-      );
-    }
+    await this.dataSource.query(
+      `SELECT set_config('app.tenant_id', $1, false)`,
+      [tenantId],
+    );
+  }
+
+  async setTransactionTenant(manager: EntityManager, tenantId: string): Promise<void> {
+    await manager.query(`SET LOCAL app.tenant_id = $1`, [tenantId]);
   }
 
   async clearSessionTenant(): Promise<void> {
-    try {
-      await this.dataSource.query(
-        `SELECT set_config('app.tenant_id', '', false)`,
-      );
-    } catch (err) {
-      this.logger.error(
-        `Error clearing app.tenant_id: ${(err as Error).message}`,
-      );
-    }
+    await this.dataSource.query(`SELECT set_config('app.tenant_id', '', false)`);
   }
 }

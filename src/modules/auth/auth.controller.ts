@@ -12,7 +12,7 @@ import {
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { AuthService } from "./auth.service";
-import { IsEmail, IsString, MinLength } from "class-validator";
+import { IsEmail, IsOptional, IsString, MinLength } from "class-validator";
 import { Response, Request } from "express";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { CurrentUser, JwtPayload } from "@/common/decorators";
@@ -22,6 +22,7 @@ import {
   buildClearAccessCookieOptions,
   buildClearRefreshCookieOptions,
 } from "@/common/cookie.factory";
+import { parseTtl } from "@/common/ttl.util";
 
 export class LoginDto {
   @IsEmail()
@@ -30,6 +31,12 @@ export class LoginDto {
   @IsString()
   @MinLength(6)
   password: string;
+}
+
+export class LogoutDto {
+  @IsOptional()
+  @IsString()
+  refreshToken?: string;
 }
 
 export class CreateUserDto {
@@ -64,14 +71,22 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const tokens = await this.authService.login(dto.email, dto.password);
-    
-    // Set HttpOnly Cookies
+
     const isProduction = process.env.NODE_ENV === "production";
     const accessCookieName = isProduction ? "__Host-access" : "access";
     const refreshCookieName = isProduction ? "__Host-refresh" : "refresh";
 
-    res.cookie(accessCookieName, tokens.accessToken, buildAccessCookieOptions());
-    res.cookie(refreshCookieName, tokens.refreshToken, buildRefreshCookieOptions());
+    const accessTtl = process.env.JWT_ACCESS_EXPIRATION || "15m";
+    const refreshTtl = process.env.JWT_REFRESH_EXPIRATION || "7d";
+
+    res.cookie(accessCookieName, tokens.accessToken, {
+      ...buildAccessCookieOptions(),
+      maxAge: parseTtl(accessTtl),
+    });
+    res.cookie(refreshCookieName, tokens.refreshToken, {
+      ...buildRefreshCookieOptions(),
+      maxAge: parseTtl(refreshTtl),
+    });
 
     return { message: "Login exitoso" };
   }
@@ -84,19 +99,30 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const isProduction = process.env.NODE_ENV === "production";
+    const accessCookieName = isProduction ? "__Host-access" : "access";
     const refreshCookieName = isProduction ? "__Host-refresh" : "refresh";
     const refreshToken = req.cookies?.[refreshCookieName];
 
     if (!refreshToken) {
-      res.status(HttpStatus.UNAUTHORIZED).send({ message: "No refresh token provided" });
+      res
+        .status(HttpStatus.UNAUTHORIZED)
+        .send({ message: "No refresh token provided" });
       return;
     }
 
     const tokens = await this.authService.refresh(refreshToken);
-    
-    const accessCookieName = isProduction ? "__Host-access" : "access";
-    res.cookie(accessCookieName, tokens.accessToken, buildAccessCookieOptions());
-    res.cookie(refreshCookieName, tokens.refreshToken, buildRefreshCookieOptions());
+
+    const accessTtl = process.env.JWT_ACCESS_EXPIRATION || "15m";
+    const refreshTtl = process.env.JWT_REFRESH_EXPIRATION || "7d";
+
+    res.cookie(accessCookieName, tokens.accessToken, {
+      ...buildAccessCookieOptions(),
+      maxAge: parseTtl(accessTtl),
+    });
+    res.cookie(refreshCookieName, tokens.refreshToken, {
+      ...buildRefreshCookieOptions(),
+      maxAge: parseTtl(refreshTtl),
+    });
 
     return { message: "Token refrescado exitosamente" };
   }
@@ -106,21 +132,23 @@ export class AuthController {
   @ApiOperation({ summary: "Cerrar sesión (limpia cookies)" })
   async logout(
     @Req() req: Request,
+    @Body() body: LogoutDto,
     @Res({ passthrough: true }) res: Response,
   ) {
     const isProduction = process.env.NODE_ENV === "production";
     const accessCookieName = isProduction ? "__Host-access" : "access";
     const refreshCookieName = isProduction ? "__Host-refresh" : "refresh";
-    
-    const refreshToken = req.cookies?.[refreshCookieName];
+
+    const refreshToken =
+      req.cookies?.[refreshCookieName] || body?.refreshToken;
     if (refreshToken) {
       await this.authService.logout(refreshToken);
     }
 
-    res.cookie(accessCookieName, "", buildClearAccessCookieOptions());
-    res.cookie(refreshCookieName, "", buildClearRefreshCookieOptions());
+    res.clearCookie(accessCookieName, buildClearAccessCookieOptions());
+    res.clearCookie(refreshCookieName, buildClearRefreshCookieOptions());
 
-    return { message: "Sesión cerrada exitosamente" };
+    return { message: "Logged out" };
   }
 
   @Get("me")

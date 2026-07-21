@@ -1,25 +1,24 @@
-import {
-  Injectable,
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-} from "@nestjs/common";
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 
 @Injectable()
 export class TenantGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
-    const headerTenantId = request.headers["x-tenant-id"];
-    if (!headerTenantId) {
+    if (!user) throw new UnauthorizedException('Authentication required');
+
+    const headerTenantId = request.headers['x-tenant-id'] as string | undefined;
+    const userTenantId = user.tenant_id;
+
+    if (user.role === 'super_admin') {
+      request.tenantId = headerTenantId || userTenantId;
       return true;
     }
-    if (user && user.role === "super_admin") {
-      return true;
+
+    if (headerTenantId && headerTenantId !== userTenantId) {
+      throw new ForbiddenException('Tenant mismatch: header does not match token');
     }
-    if (user && headerTenantId !== user.tenant_id) {
-      throw new ForbiddenException("X-Tenant-Id no coincide con el token");
-    }
+    request.tenantId = userTenantId;
     return true;
   }
 }

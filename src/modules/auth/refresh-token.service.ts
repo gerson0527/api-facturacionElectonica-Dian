@@ -12,12 +12,27 @@ export class RefreshTokenService {
     private readonly tokenRepo: Repository<RefreshToken>,
   ) {}
 
-  async store(jti: string, userId: string, tenantId: string): Promise<void> {
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    const token = this.tokenRepo.create({ jti, userId, tenantId, expiresAt });
+  async store(
+    jti: string,
+    userId: string,
+    tenantId: string,
+    expiresAt?: Date,
+  ): Promise<void> {
+    const finalExpiresAt =
+      expiresAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const token = this.tokenRepo.create({
+      jti,
+      userId,
+      tenantId,
+      expiresAt: finalExpiresAt,
+    });
     await this.tokenRepo.upsert(token, ["jti"]);
   }
 
+  /**
+   * @deprecated Usar consumeAtomic() para evitar race conditions.
+   * Mantenido solo por compatibilidad con código legacy.
+   */
   async consume(jti: string): Promise<boolean> {
     const token = await this.tokenRepo.findOne({ where: { jti } });
     if (!token) return false;
@@ -29,6 +44,30 @@ export class RefreshTokenService {
     token.consumedAt = new Date();
     await this.tokenRepo.save(token);
     return true;
+  }
+
+  async consumeAtomic(jti: string): Promise<RefreshToken | null> {
+    const result = await this.tokenRepo
+      .createQueryBuilder()
+      .update(RefreshToken)
+      .set({ consumedAt: () => "NOW()" })
+      .where(
+        "jti = :jti AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()",
+        { jti },
+      )
+      .returning("*")
+      .execute();
+
+    if (!result.affected) {
+      const token = await this.tokenRepo.findOne({ where: { jti } });
+      if (token && token.consumedAt) {
+        await this.revokeFamily(token.userId);
+      }
+      return null;
+    }
+
+    const updated = await this.tokenRepo.findOne({ where: { jti } });
+    return updated;
   }
 
   async revoke(jti: string): Promise<void> {
@@ -49,6 +88,10 @@ export class RefreshTokenService {
     await this.tokenRepo.save(tokens);
   }
 
+  /**
+   * @deprecated Mantenido por compatibilidad. La lógica de familia se invoca
+   * desde consumeAtomic() ahora.
+   */
   private async revokeFamily(userId: string): Promise<void> {
     this.logger.warn(
       `Revocando familia de tokens por posible robo: userId=${userId}`,

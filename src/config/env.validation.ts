@@ -49,6 +49,10 @@ export const envValidationSchema = Joi.object({
   LOG_LEVEL: Joi.string()
     .valid("error", "warn", "info", "debug", "verbose")
     .default("info"),
+  MP_ACCESS_TOKEN: Joi.string().allow("").optional(),
+  MP_WEBHOOK_SECRET: Joi.string().allow("").optional(),
+  PUBLIC_BACKEND_URL: Joi.string().uri().optional(),
+  SENTRY_DSN: Joi.string().uri().allow("").optional(),
 });
 
 export type EnvConfig = {
@@ -86,4 +90,8 @@ export type EnvConfig = {
   BODY_SIZE_LIMIT: string;
   MULTIPART_FILE_SIZE_LIMIT: number;
   LOG_LEVEL: string;
+  MP_ACCESS_TOKEN?: string;
+  MP_WEBHOOK_SECRET?: string;
+  PUBLIC_BACKEND_URL?: string;
+  SENTRY_DSN?: string;
 };

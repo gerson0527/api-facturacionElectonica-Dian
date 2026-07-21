@@ -1,7 +1,10 @@
-import { Controller, Post, Get, Param, Body, Query } from "@nestjs/common";
+import { Controller, Post, Get, Param, Body, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiQuery } from "@nestjs/swagger";
 import { CustomersService } from "./customers.service";
 import { IsString, IsOptional, IsArray } from "class-validator";
+import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
+import { TenantGuard } from "@/common/guards/tenant.guard";
+import { TenantId } from "@/common/decorators/tenant-id.decorator";
 
 export class CreateCustomerDto {
   @IsString()
@@ -39,14 +42,15 @@ export class CreateCustomerDto {
 }
 
 @ApiTags("Customers")
-@Controller("tenants/:tenantId/customers")
+@Controller("customers")
+@UseGuards(JwtAuthGuard, TenantGuard)
 export class CustomersController {
   constructor(private readonly service: CustomersService) {}
 
   @Post()
   @ApiOperation({ summary: "Crear cliente" })
   async create(
-    @Param("tenantId") tenantId: string,
+    @TenantId() tenantId: string,
     @Body() dto: CreateCustomerDto,
   ) {
     return this.service.create(tenantId, dto);
@@ -54,14 +58,14 @@ export class CustomersController {
 
   @Get()
   @ApiOperation({ summary: "Listar clientes" })
-  async findAll(@Param("tenantId") tenantId: string) {
+  async findAll(@TenantId() tenantId: string) {
     return this.service.findByTenant(tenantId);
   }
 
   @Get(":customerId")
   @ApiOperation({ summary: "Consultar cliente" })
   async findOne(
-    @Param("tenantId") tenantId: string,
+    @TenantId() tenantId: string,
     @Param("customerId") customerId: string,
   ) {
     return this.service.findOne(customerId, tenantId);

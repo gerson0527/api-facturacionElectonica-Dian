@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException, Logger } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { InjectQueue } from "@nestjs/bullmq";
@@ -82,6 +82,28 @@ export class CreditNotesService {
       throw new NotFoundException("Factura original no encontrada");
     }
     const tenantId = invoice.tenantId;
+
+    // FIX: factura debe estar ACCEPTED para emitir NC
+    if (invoice.status !== "accepted") {
+      throw new BadRequestException(
+        `Cannot issue credit note: invoice status is ${invoice.status}, must be 'accepted'`,
+      );
+    }
+
+    // FIX: validar reasonCode del catálogo DIAN (01-13 para NC)
+    const validReasonCodes = ["01","02","03","04","05","06","07","08","09","10","11","12","13"];
+    if (!validReasonCodes.includes(input.reasonCode)) {
+      throw new BadRequestException(
+        `Invalid credit note reason code: ${input.reasonCode}`,
+      );
+    }
+
+    // FIX: tope no debe superar valor factura
+    if (Number(input.totalAmount) > Number(invoice.totalAmount)) {
+      throw new BadRequestException(
+        `Credit note amount ${input.totalAmount} exceeds invoice total ${invoice.totalAmount}`,
+      );
+    }
 
     return this.idempotencyService.executeWithIdempotency(
       tenantId,

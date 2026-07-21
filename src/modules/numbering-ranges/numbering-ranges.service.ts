@@ -89,6 +89,17 @@ export class NumberingRangesService {
       );
     }
 
+    if (range.validTo && new Date() > new Date(range.validTo)) {
+      throw new ConflictException(
+        `Resolution ${range.id} expired on ${range.validTo}`,
+      );
+    }
+    if (range.validFrom && new Date() < new Date(range.validFrom)) {
+      throw new ConflictException(
+        `Resolution ${range.id} not yet valid (starts ${range.validFrom})`,
+      );
+    }
+
     const nextNumber = range.currentNumber + 1;
     if (nextNumber > range.toNumber) {
       throw new ConflictException(

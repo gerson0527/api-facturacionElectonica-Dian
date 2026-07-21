@@ -26,6 +26,12 @@ export class NumberingRange extends TenantEntity {
   @Column({ type: "boolean", default: true, name: "is_active" })
   isActive: boolean;
 
+  @Column({ type: "date", name: "valid_from", nullable: true })
+  validFrom: string;
+
+  @Column({ type: "date", name: "valid_to", nullable: true })
+  validTo: string;
+
   @ManyToOne("Tenant", "numberingRanges")
   @JoinColumn({ name: "tenant_id" })
   tenant: Tenant;

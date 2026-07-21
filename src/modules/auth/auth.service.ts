@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException, Logger } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import * as bcrypt from "bcrypt";
@@ -8,6 +9,7 @@ import { StringValue } from "ms";
 import { User } from "@/database/entities/user.entity";
 import { Tenant } from "@/database/entities/tenant.entity";
 import { RefreshTokenService } from "./refresh-token.service";
+import { parseTtl } from "@/common/ttl.util";
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_MINUTES = 15;
@@ -22,6 +24,7 @@ export class AuthService {
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
     private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
     private readonly refreshTokenService: RefreshTokenService,
   ) {}
 
@@ -74,18 +77,20 @@ export class AuthService {
         secret: process.env.JWT_REFRESH_SECRET,
       });
     } catch {
-      throw new UnauthorizedException("Refresh token inválido o expirado");
+      throw new UnauthorizedException("Invalid refresh token");
     }
 
-    const jti = payload.jti;
-    if (!jti) {
-      throw new UnauthorizedException("Refresh token inválido");
+    if (payload.type !== "refresh") {
+      throw new UnauthorizedException("Token type mismatch");
     }
 
-    const stored = await this.refreshTokenService.consume(jti);
+    if (!payload.jti) {
+      throw new UnauthorizedException("Missing jti");
+    }
+
+    const stored = await this.refreshTokenService.consumeAtomic(payload.jti);
     if (!stored) {
-      this.logger.warn(`Intento de reutilización de refresh token: jti=${jti}`);
-      throw new UnauthorizedException("Refresh token inválido o ya utilizado");
+      throw new UnauthorizedException("Refresh token revoked or expired");
     }
 
     const user = await this.userRepo.findOne({
@@ -139,24 +144,37 @@ export class AuthService {
   private async generateTokens(
     user: User,
   ): Promise<{ accessToken: string; refreshToken: string }> {
+    const accessTtl =
+      this.configService.get<string>("JWT_ACCESS_EXPIRATION") || "15m";
+    const refreshTtl =
+      this.configService.get<string>("JWT_REFRESH_EXPIRATION") || "7d";
+
     const jti = randomBytes(16).toString("hex");
-    const payload = {
+    const basePayload = {
       sub: user.id,
       tenant_id: user.tenantId,
       role: user.role,
       email: user.email,
     };
 
-    const accessToken = this.jwtService.sign({ ...payload, type: "access" });
-    const refreshToken = this.jwtService.sign(
-      { ...payload, type: "refresh", jti },
+    const accessToken = this.jwtService.sign(
+      { ...basePayload, type: "access" },
       {
-        secret: process.env.JWT_REFRESH_SECRET,
-        expiresIn: (process.env.JWT_REFRESH_EXPIRATION || "7d") as StringValue,
+        secret: this.configService.getOrThrow<string>("JWT_ACCESS_SECRET"),
+        expiresIn: accessTtl as StringValue,
       },
     );
 
-    await this.refreshTokenService.store(jti, user.id, user.tenantId);
+    const refreshToken = this.jwtService.sign(
+      { sub: user.id, tenant_id: user.tenantId, type: "refresh", jti },
+      {
+        secret: process.env.JWT_REFRESH_SECRET,
+        expiresIn: refreshTtl as StringValue,
+      },
+    );
+
+    const expiresAt = new Date(Date.now() + parseTtl(refreshTtl));
+    await this.refreshTokenService.store(jti, user.id, user.tenantId, expiresAt);
 
     return { accessToken, refreshToken };
   }

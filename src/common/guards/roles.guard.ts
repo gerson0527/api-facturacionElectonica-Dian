@@ -1,42 +1,19 @@
-import {
-  Injectable,
-  CanActivate,
-  ExecutionContext,
-  ForbiddenException,
-} from "@nestjs/common";
-import { Reflector } from "@nestjs/core";
-import { ROLES_KEY } from "../decorators/roles.decorator";
-
-const ROLE_HIERARCHY: Record<string, number> = {
-  super_admin: 100,
-  tenant_admin: 80,
-  tenant_user: 50,
-  tenant_viewer: 10,
-};
+import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
-
-  canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<string[]>(
-      ROLES_KEY,
-      [context.getHandler(), context.getClass()],
-    );
-    if (!requiredRoles || requiredRoles.length === 0) {
-      return true;
-    }
-    const { user } = context.switchToHttp().getRequest();
-    if (!user) {
-      throw new ForbiddenException("No autenticado");
-    }
-    const userLevel = ROLE_HIERARCHY[user.role] ?? 0;
-    const hasRole = requiredRoles.some((role) => {
-      const requiredLevel = ROLE_HIERARCHY[role] ?? 0;
-      return userLevel >= requiredLevel;
-    });
-    if (!hasRole) {
-      throw new ForbiddenException("No tienes permisos suficientes");
+  canActivate(ctx: ExecutionContext): boolean {
+    const required = this.reflector.getAllAndOverride<string[]>('roles', [
+      ctx.getHandler(), ctx.getClass(),
+    ]);
+    if (!required || required.length === 0) return true;
+    const req = ctx.switchToHttp().getRequest();
+    if (!req.user) throw new ForbiddenException('No user in request');
+    const userRole = req.user.role;
+    if (!required.includes(userRole)) {
+      throw new ForbiddenException(`Requires role: ${required.join(' or ')}`);
     }
     return true;
   }

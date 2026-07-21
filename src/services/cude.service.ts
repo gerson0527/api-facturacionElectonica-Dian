@@ -1,5 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import * as crypto from "crypto";
+import {
+  formatDecimalCol,
+  formatDateCol,
+  formatTimeCol,
+} from "./dian-format.util";
 
 export interface CudeInput {
   numDoc: string;
@@ -23,14 +28,19 @@ export interface CudeInput {
 @Injectable()
 export class CudeService {
   generate(input: CudeInput): string {
+    const fecDate = new Date(input.fecDoc);
+    const horSource = input.horDoc
+      ? new Date(`${input.fecDoc}T${input.horDoc}`)
+      : fecDate;
+
     const fields = [
       input.numDoc,
-      input.fecDoc,
-      input.horDoc,
-      input.valBruto,
-      input.valIva,
-      input.valAdicional,
-      input.valTotal,
+      formatDateCol(fecDate),
+      formatTimeCol(horSource),
+      formatDecimalCol(input.valBruto),
+      formatDecimalCol(input.valIva),
+      formatDecimalCol(input.valAdicional),
+      formatDecimalCol(input.valTotal),
       input.nitEmisor,
       input.dvEmisor,
       input.tipoDocAdquirente,

@@ -30,7 +30,8 @@
     "migration:generate": "npm run typeorm -- migration:generate -d src/config/database.config.ts",
     "migration:run": "npm run typeorm -- migration:run -d src/config/database.config.ts",
     "migration:revert": "npm run typeorm -- migration:revert -d src/config/database.config.ts",
-    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts"
+    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
+    "seed:demo": "ts-node -r tsconfig-paths/register src/database/seeds/demo-data.seed.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.0",
@@ -44,7 +45,9 @@
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.0",
+    "@sentry/node": "^7.91.0",
     "archiver": "^7.0.0",
+    "argon2": "^0.31.2",
     "axios": "^1.7.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.0.0",
