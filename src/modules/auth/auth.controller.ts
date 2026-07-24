@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation } from "@nestjs/swagger";
-import { Throttle } from "@nestjs/throttler";
+import { Throttle, SkipThrottle } from "@nestjs/throttler";
 import { AuthService } from "./auth.service";
 import { IsEmail, IsOptional, IsString, MinLength } from "class-validator";
 import { Response, Request } from "express";
@@ -64,7 +64,7 @@ export class AuthController {
 
   @Post("login")
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ login: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: "Iniciar sesión (devuelve cookies)" })
   async login(
     @Body() dto: LoginDto,
@@ -129,6 +129,17 @@ export class AuthController {
 
   @Post("logout")
   @HttpCode(HttpStatus.OK)
+  @SkipThrottle({
+    default: true,
+    short: true,
+    login: true,
+    refresh: true,
+    certificados: true,
+    retry: true,
+    descargas: true,
+    auditoria: true,
+    facturas: true,
+  })
   @ApiOperation({ summary: "Cerrar sesión (limpia cookies)" })
   async logout(
     @Req() req: Request,
@@ -153,9 +164,20 @@ export class AuthController {
 
   @Get("me")
   @UseGuards(JwtAuthGuard)
+  @SkipThrottle({
+    default: true,
+    short: true,
+    login: true,
+    refresh: true,
+    certificados: true,
+    retry: true,
+    descargas: true,
+    auditoria: true,
+    facturas: true,
+  })
   @ApiOperation({ summary: "Obtener perfil del usuario autenticado" })
-  getProfile(@CurrentUser() user: JwtPayload) {
-    return user;
+  async getProfile(@CurrentUser() user: JwtPayload) {
+    return this.authService.getProfile(user.sub);
   }
 
   @Post("revoke-all")

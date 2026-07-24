@@ -5,6 +5,7 @@ import { InvoicesController } from "./invoices.controller";
 import { InvoicesService } from "./invoices.service";
 import { Invoice } from "@/database/entities/invoice.entity";
 import { InvoiceLine } from "@/database/entities/invoice-line.entity";
+import { InvoicePayment } from "@/database/entities/invoice-payment.entity";
 import { TaxTotal } from "@/database/entities/tax-total.entity";
 import { NumberingRange } from "@/database/entities/numbering-range.entity";
 import { DianSoftwareCredential } from "@/database/entities/dian-software-credential.entity";
@@ -29,6 +30,7 @@ import { NumberingRangesService } from "../numbering-ranges/numbering-ranges.ser
     TypeOrmModule.forFeature([
       Invoice,
       InvoiceLine,
+      InvoicePayment,
       TaxTotal,
       NumberingRange,
       DianSoftwareCredential,

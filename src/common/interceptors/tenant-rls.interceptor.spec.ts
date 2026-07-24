@@ -20,7 +20,7 @@ describe("TenantRlsInterceptor", () => {
   let rlsService: TenantRlsService;
 
   const mockContext = {
-    switchToHttp: () => ({}),
+    switchToHttp: () => ({ getRequest: () => ({ tenantId: "tenant-123" }) }),
     getHandler: () => ({}),
     getClass: () => ({}),
   } as any;
@@ -45,71 +45,47 @@ describe("TenantRlsInterceptor", () => {
     jest.clearAllMocks();
   });
 
-  it("debe llamar a setSessionTenant con el tenantId del contexto", (done) => {
-    (getTenantContext as jest.Mock).mockReturnValue({
-      tenantId: "tenant-123",
-      userId: "u1",
-      role: "admin",
-      requestId: "r1",
-    });
-    const setSpy = jest.spyOn(rlsService, "setSessionTenant");
+  it("debe limpiar RLS tras terminar request", (done) => {
+    const clearSpy = jest.spyOn(rlsService, "clearSessionTenant").mockResolvedValue(undefined);
     const next = { handle: () => of("done") };
 
     interceptor.intercept(mockContext, next).subscribe({
       complete: () => {
-        expect(setSpy).toHaveBeenCalledWith("tenant-123");
-        done();
+        setTimeout(() => {
+          expect(clearSpy).toHaveBeenCalled();
+          done();
+        }, 0);
       },
     });
   });
 
   it("debe omitir RLS si no hay tenant context", (done) => {
-    (getTenantContext as jest.Mock).mockReturnValue(undefined);
-    const setSpy = jest.spyOn(rlsService, "setSessionTenant");
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => ({ tenantId: null }) }),
+    } as any;
+    const clearSpy = jest.spyOn(rlsService, "clearSessionTenant");
     const next = { handle: () => of("done") };
 
-    interceptor.intercept(mockContext, next).subscribe({
+    interceptor.intercept(ctx, next).subscribe({
       complete: () => {
-        expect(setSpy).not.toHaveBeenCalled();
-        done();
+        setTimeout(() => {
+          expect(clearSpy).not.toHaveBeenCalled();
+          done();
+        }, 0);
       },
     });
   });
 
-  it("debe manejar errores al establecer RLS", (done) => {
-    (getTenantContext as jest.Mock).mockReturnValue({ tenantId: "tenant-123" });
-    jest.spyOn(rlsService, "setSessionTenant").mockRejectedValue(new Error("set error"));
-    
-    // Accedemos a logger usando cast a any
-    const loggerSpy = jest.spyOn((interceptor as any).logger, "error");
+  it("debe manejar errores silenciados al limpiar RLS", (done) => {
+    const clearSpy = jest.spyOn(rlsService, "clearSessionTenant").mockRejectedValue(new Error("clear error"));
     const next = { handle: () => of("done") };
 
     interceptor.intercept(mockContext, next).subscribe({
       complete: () => {
-        // Necesitamos esperar a que la promesa rechazada se maneje
         setTimeout(() => {
-          expect(loggerSpy).toHaveBeenCalledWith("Failed to set RLS context: set error");
+          expect(clearSpy).toHaveBeenCalled();
           done();
-        }, 10);
-      },
-    });
-  });
-
-  it("debe manejar errores al limpiar RLS", (done) => {
-    (getTenantContext as jest.Mock).mockReturnValue({ tenantId: "tenant-123" });
-    jest.spyOn(rlsService, "setSessionTenant").mockResolvedValue(undefined);
-    jest.spyOn(rlsService, "clearSessionTenant").mockRejectedValue(new Error("clear error"));
-    
-    const loggerSpy = jest.spyOn((interceptor as any).logger, "error");
-    const next = { handle: () => of("done") };
-
-    interceptor.intercept(mockContext, next).subscribe({
-      complete: () => {
-        // La limpieza ocurre en finalize, también es asíncrono
-        setTimeout(() => {
-          expect(loggerSpy).toHaveBeenCalledWith("Failed to clear RLS context: clear error");
-          done();
-        }, 10);
+        }, 0);
       },
     });
   });

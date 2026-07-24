@@ -10,10 +10,13 @@ import { CashModule } from '../cash/cash.module';
 import { PosService } from './pos.service';
 import { PosController } from './pos.controller';
 
+import { NumberingRangesModule } from '../numbering-ranges/numbering-ranges.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([Invoice, InvoiceLine, TaxTotal, Product, InventoryMovement, NumberingRange]),
     CashModule,
+    NumberingRangesModule,
   ],
   providers: [PosService],
   controllers: [PosController],

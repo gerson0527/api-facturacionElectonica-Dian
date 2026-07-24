@@ -38,3 +38,4 @@ export { BillingEvent } from "./billing-event.entity";
 export { Branch } from "./branch.entity";
 export { Warehouse } from "./warehouse.entity";
 export { ProductStock } from "./product-stock.entity";
+export { InvoicePayment } from './invoice-payment.entity';

@@ -36,8 +36,9 @@ describe("TenantRlsService", () => {
     );
   });
 
-  it("no debe lanzar error si la consulta falla (solo log)", async () => {
-    mockQuery.mockRejectedValueOnce(new Error("connection lost"));
-    await expect(service.setSessionTenant("abc-123")).resolves.toBeUndefined();
+  it("debe propagar el error si la consulta falla", async () => {
+    const error = new Error("connection lost");
+    mockQuery.mockRejectedValueOnce(error);
+    await expect(service.setSessionTenant("abc-123")).rejects.toThrow(error);
   });
 });

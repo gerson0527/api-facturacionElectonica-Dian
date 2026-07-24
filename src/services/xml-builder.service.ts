@@ -70,10 +70,25 @@ export interface AuthorizationPeriodData {
   endDate: string;
 }
 
+export interface PaymentMeansXmlData {
+  paymentMethodCode: string;
+  amount: number | string;
+  paidDate?: string;
+  reference?: string;
+}
+
 export interface InvoiceXmlData extends DocumentXmlData {
   invoiceType: string;
   paymentFormCode: string;
-  paymentMethodCode: string;
+  /**
+   * Single payment (legacy). When `payments` is also provided, this is ignored.
+   */
+  paymentMethodCode?: string;
+  /**
+   * Multiple / split payments. Takes precedence over `paymentMethodCode`.
+   * Each entry becomes a separate `<cac:PaymentMeans>` block in the XML.
+   */
+  payments?: PaymentMeansXmlData[];
   dueDate?: string;
   authorizationPeriod?: AuthorizationPeriodData;
 }
@@ -637,30 +652,52 @@ export class XmlBuilderService {
     parent: XMLBuilder,
     data: {
       paymentFormCode: string;
+      paymentMethodCode?: string;
+      payments?: PaymentMeansXmlData[];
       dueDate?: string;
       issueDate: string;
       number: string;
     },
   ): void {
-    parent
-      .ele("cac:PaymentMeans")
-      .ele("cbc:ID")
-      .txt("1")
-      .up()
-      .ele("cbc:PaymentMeansCode", {
-        listID: "DIAN-29",
-        listAgencyID: "195",
-        listName: "Forma de Pago",
-        listURI: "https://facturaelectronica.dian.gov.co/catalogo/formaPago",
-      })
-      .txt(this.catalogsService.getItemByCode("PAYMENT_FORM", data.paymentFormCode) ? data.paymentFormCode : "1")
-      .up()
-      .ele("cbc:PaymentDueDate")
-      .txt(data.dueDate || data.issueDate)
-      .up()
-      .ele("cbc:PaymentID")
-      .txt(data.number)
-      .up();
+    // Resolve the list of payments: explicit `payments` array, or a single fallback
+    const payments: PaymentMeansXmlData[] =
+      data.payments && data.payments.length > 0
+        ? data.payments
+        : data.paymentMethodCode
+          ? [{ paymentMethodCode: data.paymentMethodCode, amount: 0 }]
+          : [{ paymentMethodCode: "10", amount: 0 }];
+
+    payments.forEach((payment, index) => {
+      const paymentId = String(index + 1);
+      parent
+        .ele("cac:PaymentMeans")
+        .ele("cbc:ID")
+        .txt(paymentId)
+        .up()
+        .ele("cbc:PaymentMeansCode", {
+          listID: "DIAN-29",
+          listAgencyID: "195",
+          listName: "Forma de Pago",
+          listURI: "https://facturaelectronica.dian.gov.co/catalogo/formaPago",
+        })
+        .txt(
+          this.catalogsService.getItemByCode("PAYMENT_FORM", data.paymentFormCode)
+            ? data.paymentFormCode
+            : "1",
+        )
+        .up()
+        .ele("cbc:PaymentDueDate")
+        .txt(data.dueDate || data.issueDate)
+        .up()
+        .ele("cbc:PaymentID")
+        .txt(data.number)
+        .up()
+        .ele("cac:PayeeFinancialAccount")
+        .ele("cbc:ID")
+        .txt(payment.reference || payment.paymentMethodCode)
+        .up()
+        .up();
+    });
   }
 
   private buildTaxTotals(

@@ -25,10 +25,13 @@ export class AuditInterceptor implements NestInterceptor {
         const actor = user?.sub || "anonymous";
         const action = `${method} ${path}`;
         const duration = Date.now() - startTime;
+        
+        const resolvedTenantId = request.tenantId || user?.tenant_id || user?.tenantId;
+        if (!resolvedTenantId) return;
 
         this.auditService
           .log({
-            tenantId: request.tenantId,
+            tenantId: resolvedTenantId,
             actor,
             action,
             entityType,

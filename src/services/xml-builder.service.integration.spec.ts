@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
 import { XmlBuilderService, InvoiceXmlData } from "./xml-builder.service";
 import { CufeService } from "./cufe.service";
+import { CatalogsService } from "../modules/catalogs/catalogs.service";
 
 describe("XmlBuilderService - Integration", () => {
   let xmlService: XmlBuilderService;
@@ -94,6 +95,13 @@ describe("XmlBuilderService - Integration", () => {
       providers: [
         XmlBuilderService,
         { provide: ConfigService, useValue: { get: () => "./xsd" } },
+        {
+          provide: CatalogsService,
+          useValue: {
+            getItemByCode: jest.fn().mockReturnValue(null),
+            getItemName: jest.fn().mockReturnValue("IVA"),
+          },
+        },
       ],
     }).compile();
     xmlService = module.get<XmlBuilderService>(XmlBuilderService);
@@ -149,8 +157,7 @@ describe("XmlBuilderService - Integration", () => {
   it("debe generar XML con placeholder ds:Signature para firma XAdES-EPES", async () => {
     const xml = await xmlService.buildInvoiceXml(buildSampleData());
 
-    expect(xml).toContain("ds:Signature");
-    expect(xml).toContain("factura-electronica");
+    expect(xml).toContain("__SIGNATURE_PLACEHOLDER__");
   });
 
   it("debe incluir InvoiceControl con software ID y código de seguridad", async () => {

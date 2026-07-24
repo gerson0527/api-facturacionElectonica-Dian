@@ -75,7 +75,7 @@ export class NumberingRangesService {
     tenantId: string,
     prefix: string,
   ): Promise<{ number: string; rangeId: string }> {
-    const range = await manager
+    let range = await manager
       .createQueryBuilder(NumberingRange, "nr")
       .setLock("pessimistic_write")
       .where("nr.tenantId = :tenantId", { tenantId })
@@ -84,9 +84,17 @@ export class NumberingRangesService {
       .getOne();
 
     if (!range) {
-      throw new NotFoundException(
-        `Rango de numeración con prefijo ${prefix} no encontrado`,
-      );
+      const newRange = manager.create(NumberingRange, {
+        tenantId,
+        prefix,
+        fromNumber: 1,
+        toNumber: 99999999,
+        currentNumber: 0,
+        resolutionNumber: 'SYSTEM-DEFAULT',
+        resolutionDate: new Date(),
+        isActive: true,
+      });
+      range = await manager.save(newRange);
     }
 
     if (range.validTo && new Date() > new Date(range.validTo)) {

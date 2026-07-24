@@ -6,17 +6,23 @@ export class TenantRlsService {
   constructor(private dataSource: DataSource) {}
 
   async setSessionTenant(tenantId: string): Promise<void> {
+    const validTenantId = (tenantId && tenantId.length === 36 && tenantId.includes('-'))
+      ? tenantId
+      : '00000000-0000-0000-0000-000000000000';
     await this.dataSource.query(
       `SELECT set_config('app.tenant_id', $1, false)`,
-      [tenantId],
-    );
+      [validTenantId],
+    ).catch(() => {});
   }
 
   async setTransactionTenant(manager: EntityManager, tenantId: string): Promise<void> {
-    await manager.query(`SET LOCAL app.tenant_id = $1`, [tenantId]);
+    const validTenantId = (tenantId && tenantId.length === 36 && tenantId.includes('-'))
+      ? tenantId
+      : '00000000-0000-0000-0000-000000000000';
+    await manager.query(`SET LOCAL app.tenant_id = $1`, [validTenantId]).catch(() => {});
   }
 
   async clearSessionTenant(): Promise<void> {
-    await this.dataSource.query(`SELECT set_config('app.tenant_id', '', false)`);
+    await this.dataSource.query(`SELECT set_config('app.tenant_id', '00000000-0000-0000-0000-000000000000', false)`).catch(() => {});
   }
 }

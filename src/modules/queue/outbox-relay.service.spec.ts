@@ -2,27 +2,39 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { OutboxRelayService } from "./outbox-relay.service";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { OutboxEvent } from "../../database/entities/outbox-event.entity";
-import { DianOutboxService } from "../../services/dian-outbox.service";
+import { DianSubmission } from "../../database/entities/dian-submission.entity";
+import { getQueueToken } from "@nestjs/bullmq";
+import { ConfigService } from "@nestjs/config";
 
 describe("OutboxRelayService", () => {
   let service: OutboxRelayService;
-  let repo: any;
-  let dianOutbox: any;
+  let outboxRepo: any;
+  let submissionRepo: any;
+  let submissionQueue: any;
+  let configService: any;
 
   beforeEach(async () => {
-    repo = {
+    outboxRepo = {
       find: jest.fn(),
-      save: jest.fn(),
+      update: jest.fn(),
     };
-    dianOutbox = {
-      processEvent: jest.fn(),
+    submissionRepo = {
+      findOne: jest.fn(),
+    };
+    submissionQueue = {
+      add: jest.fn(),
+    };
+    configService = {
+      get: jest.fn().mockReturnValue(5),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OutboxRelayService,
-        { provide: getRepositoryToken(OutboxEvent), useValue: repo },
-        { provide: DianOutboxService, useValue: dianOutbox },
+        { provide: getRepositoryToken(OutboxEvent), useValue: outboxRepo },
+        { provide: getRepositoryToken(DianSubmission), useValue: submissionRepo },
+        { provide: getQueueToken("dian-submission"), useValue: submissionQueue },
+        { provide: ConfigService, useValue: configService },
       ],
     }).compile();
 
@@ -34,54 +46,50 @@ describe("OutboxRelayService", () => {
   });
 
   describe("processOutbox", () => {
-    it("should process pending events", async () => {
-      const mockEvent = { id: "1", type: "INVOICE_SUBMIT", payload: {}, status: "PENDING", attempts: 0 };
-      repo.find.mockResolvedValue([mockEvent]);
-      dianOutbox.processEvent.mockResolvedValue(true);
+    it("should process pending events and enqueue them", async () => {
+      const mockEvent = { id: "1", eventType: "INVOICE_CREATED", aggregateId: "inv-1", tenantId: "t-1" };
+      const mockSubmission = { id: "sub-1", requestZipPath: "path/to.zip" };
+      
+      outboxRepo.find.mockResolvedValue([mockEvent]);
+      submissionRepo.findOne.mockResolvedValue(mockSubmission);
+      submissionQueue.add.mockResolvedValue({});
 
       await service.processOutbox();
 
-      expect(repo.find).toHaveBeenCalled();
-      expect(dianOutbox.processEvent).toHaveBeenCalledWith(mockEvent);
-      expect(mockEvent.status).toBe("PROCESSED");
-      expect(repo.save).toHaveBeenCalledWith(mockEvent);
+      expect(outboxRepo.find).toHaveBeenCalled();
+      expect(submissionRepo.findOne).toHaveBeenCalledWith({
+        where: { invoiceId: "inv-1", attemptNumber: 1 },
+      });
+      expect(submissionQueue.add).toHaveBeenCalledWith(
+        "dian-submission",
+        expect.objectContaining({
+          submissionId: "sub-1",
+          invoiceId: "inv-1",
+        }),
+        expect.any(Object)
+      );
+      expect(outboxRepo.update).toHaveBeenCalledWith("1", expect.objectContaining({ status: "processed" }));
     });
 
-    it("should handle processing errors and increment attempts", async () => {
-      const mockEvent = { id: "1", type: "INVOICE_SUBMIT", payload: {}, status: "PENDING", attempts: 0 };
-      repo.find.mockResolvedValue([mockEvent]);
-      dianOutbox.processEvent.mockRejectedValue(new Error("Network Error"));
+    it("should handle unknown event types and mark as failed", async () => {
+      const mockEvent = { id: "1", eventType: "UNKNOWN" };
+      outboxRepo.find.mockResolvedValue([mockEvent]);
 
       await service.processOutbox();
 
-      expect(mockEvent.status).toBe("FAILED");
-      expect(mockEvent.attempts).toBe(1);
-      expect(repo.save).toHaveBeenCalledWith(mockEvent);
-    });
-
-    it("should mark as DLQ if max attempts reached", async () => {
-      const mockEvent = { id: "1", type: "INVOICE_SUBMIT", payload: {}, status: "PENDING", attempts: 4 };
-      repo.find.mockResolvedValue([mockEvent]);
-      dianOutbox.processEvent.mockRejectedValue(new Error("Network Error"));
-
-      await service.processOutbox();
-
-      expect(mockEvent.status).toBe("DLQ");
-      expect(mockEvent.attempts).toBe(5);
-      expect(repo.save).toHaveBeenCalledWith(mockEvent);
+      expect(outboxRepo.update).toHaveBeenCalledWith("1", expect.objectContaining({ status: "failed" }));
     });
   });
 
   describe("retryDlq", () => {
-    it("should reset DLQ events to PENDING", async () => {
-      const mockEvent = { id: "1", status: "DLQ" };
-      repo.find.mockResolvedValue([mockEvent]);
+    it("should reset failed events to pending", async () => {
+      const mockEvent = { id: "1", status: "failed" };
+      outboxRepo.find.mockResolvedValue([mockEvent]);
 
       const result = await service.retryDlq();
 
-      expect(result).toBe(1);
-      expect(mockEvent.status).toBe("PENDING");
-      expect(repo.save).toHaveBeenCalledWith(mockEvent);
+      expect(result).toEqual({ retried: 1 });
+      expect(outboxRepo.update).toHaveBeenCalledWith("1", expect.objectContaining({ status: "pending" }));
     });
   });
 });

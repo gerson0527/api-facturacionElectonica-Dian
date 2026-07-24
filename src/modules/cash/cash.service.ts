@@ -4,6 +4,9 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 import { CashRegister } from '../../database/entities/cash-register.entity';
 import { CashSession } from '../../database/entities/cash-session.entity';
 import { CashMovement } from '../../database/entities/cash-movement.entity';
+import { User } from '../../database/entities/user.entity';
+
+import { Branch } from '../../database/entities/branch.entity';
 
 @Injectable()
 export class CashService {
@@ -11,29 +14,86 @@ export class CashService {
     @InjectRepository(CashRegister) private registerRepo: Repository<CashRegister>,
     @InjectRepository(CashSession) private sessionRepo: Repository<CashSession>,
     @InjectRepository(CashMovement) private movementRepo: Repository<CashMovement>,
+    @InjectRepository(User) private userRepo: Repository<User>,
     private dataSource: DataSource,
   ) {}
 
   async listRegisters(tenantId: string): Promise<CashRegister[]> {
-    return this.registerRepo.find({ where: { tenantId, active: true }, order: { name: 'ASC' } });
+    const list = await this.registerRepo.find({ where: { tenantId, active: true }, order: { name: 'ASC' } });
+    if (list.length === 0) {
+      const defaultReg = await this.createRegister(tenantId, { name: 'Caja Principal', location: 'Principal' });
+      return [defaultReg];
+    }
+    return list;
   }
 
   async createRegister(tenantId: string, data: Partial<CashRegister>): Promise<CashRegister> {
-    const reg = this.registerRepo.create({ ...data, tenantId });
+    let branchId = data.branchId;
+    if (!branchId) {
+      const branchRepo = this.dataSource.getRepository(Branch);
+      const existingBranch = await branchRepo.findOne({ where: { tenantId, isActive: true } });
+      if (existingBranch) {
+        branchId = existingBranch.id;
+      } else {
+        const newBranch = await branchRepo.save(branchRepo.create({ tenantId, name: 'Sucursal Principal', isMain: true }));
+        branchId = newBranch.id;
+      }
+    }
+    const reg = this.registerRepo.create({ ...data, branchId, tenantId, active: data.active ?? true });
     return this.registerRepo.save(reg);
   }
 
-  async listSessions(tenantId: string, status?: string): Promise<CashSession[]> {
-    const where: any = { tenantId };
-    if (status) where.status = status;
-    return this.sessionRepo.find({ where, order: { openedAt: 'DESC' } });
+  async updateRegister(tenantId: string, id: string, data: Partial<CashRegister>): Promise<CashRegister> {
+    await this.registerRepo.update({ id, tenantId }, data);
+    return this.registerRepo.findOneOrFail({ where: { id, tenantId } });
   }
 
-  async getOpenSession(userId: string, tenantId: string): Promise<CashSession | null> {
-    return this.sessionRepo.findOne({
+  async deleteRegister(tenantId: string, id: string): Promise<{ deleted: boolean; message: string }> {
+    const sessionCount = await this.sessionRepo.count({ where: { tenantId, cashRegisterId: id } });
+    if (sessionCount > 0) {
+      await this.registerRepo.update({ id, tenantId }, { active: false });
+      return { deleted: false, message: 'La caja tiene transacciones registradas; fue marcada como inactiva.' };
+    }
+    await this.registerRepo.delete({ id, tenantId });
+    return { deleted: true, message: 'Caja eliminada correctamente de la base de datos.' };
+  }
+
+  async listSessions(tenantId: string, status?: string): Promise<any[]> {
+    const where: any = { tenantId };
+    if (status) where.status = status;
+    const sessions = await this.sessionRepo.find({ where, order: { openedAt: 'DESC' } });
+    
+    // Manual mapping for user names to avoid TypeORM relation conflicts
+    const userIds = [...new Set(sessions.flatMap(s => [s.openedBy, s.closedBy]).filter(Boolean))];
+    let users: User[] = [];
+    if (userIds.length > 0) {
+      users = await this.userRepo.createQueryBuilder('user')
+        .where('user.id IN (:...userIds)', { userIds })
+        .getMany();
+    }
+    
+    return sessions.map((s: any) => {
+      const openedUser = users.find(u => u.id === s.openedBy);
+      const closedUser = users.find(u => u.id === s.closedBy);
+      return {
+        ...s,
+        openedByUser: openedUser ? { id: openedUser.id, fullName: openedUser.fullName } : null,
+        closedByUser: closedUser ? { id: closedUser.id, fullName: closedUser.fullName } : null,
+      };
+    });
+  }
+
+  async getOpenSession(userId: string, tenantId: string): Promise<any | null> {
+    const s = await this.sessionRepo.findOne({
       where: { tenantId, openedBy: userId, status: 'open' },
       order: { openedAt: 'DESC' },
     });
+    if (!s) return null;
+    const user = await this.userRepo.findOne({ where: { id: s.openedBy } });
+    return {
+      ...s,
+      openedByUser: user ? { id: user.id, fullName: user.fullName } : null,
+    };
   }
 
   async openSession(
@@ -119,8 +179,13 @@ export class CashService {
       notes?: string;
     },
   ): Promise<CashMovement> {
+    const validUserId = (data.userId && data.userId.length === 36 && data.userId.includes('-')) 
+      ? data.userId 
+      : '00000000-0000-0000-0000-000000000000';
+
     const movement = manager.create(CashMovement, {
       ...data,
+      userId: validUserId,
       amount: String(data.amount),
       notes: data.notes ?? '',
     });

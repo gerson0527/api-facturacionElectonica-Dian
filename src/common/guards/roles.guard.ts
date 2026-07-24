@@ -12,6 +12,7 @@ export class RolesGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest();
     if (!req.user) throw new ForbiddenException('No user in request');
     const userRole = req.user.role;
+    if (userRole === 'super_admin') return true;
     if (!required.includes(userRole)) {
       throw new ForbiddenException(`Requires role: ${required.join(' or ')}`);
     }

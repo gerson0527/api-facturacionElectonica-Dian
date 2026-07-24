@@ -1,5 +1,5 @@
 import { NestFactory } from "@nestjs/core";
-import { ValidationPipe, Logger } from "@nestjs/common";
+import { ValidationPipe, Logger, BadRequestException } from "@nestjs/common";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import helmet from "helmet";
@@ -77,9 +77,18 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
       transform: true,
       transformOptions: { enableImplicitConversion: true },
+      // Surface validation errors in logs and response
+      exceptionFactory: (errors) => {
+        const logger = new Logger('Validation');
+        const msg = errors
+          .map((e) => `${e.property}: ${Object.values(e.constraints || {}).join(', ')}`)
+          .join('; ');
+        logger.warn(`Validation failed: ${msg}`);
+        return new BadRequestException({ message: 'Validation failed', errors: msg });
+      },
     }),
   );
 

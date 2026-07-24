@@ -13,6 +13,9 @@ export class InventoryMovement extends TenantEntity {
   @Column({ type: "enum", enum: MovementType })
   type: MovementType;
 
+  @Column({ type: "uuid", name: "product_id", nullable: true })
+  productId: string;
+
   @Column({ type: "int" })
   quantity: number;
 

@@ -38,7 +38,11 @@ export const envValidationSchema = Joi.object({
   DIAN_TIMEOUT_TOTAL: Joi.number().default(120000),
   CORS_ALLOWED_ORIGINS: Joi.string().default("http://localhost:3000"),
   THROTTLER_TTL: Joi.number().default(60),
-  THROTTLER_LIMIT: Joi.number().default(30),
+  THROTTLER_LIMIT: Joi.number().when("NODE_ENV", {
+    is: "production",
+    then: Joi.number().default(60),
+    otherwise: Joi.number().default(300),
+  }),
   THROTTLER_LIMIT_LOGIN: Joi.number().default(5),
   STORAGE_PATH: Joi.string().default("./storage"),
   XSD_PATH: Joi.string().default("./xsd"),

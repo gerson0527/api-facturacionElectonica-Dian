@@ -121,6 +121,22 @@ export class AuthService {
     await this.refreshTokenService.revokeAllForUser(userId);
   }
 
+  async getProfile(userId: string) {
+    const user = await this.userRepo.findOne({
+      where: { id: userId, isActive: true },
+      relations: ["tenant"],
+    });
+    if (!user) throw new UnauthorizedException("Usuario no encontrado");
+    return {
+      sub: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      tenantId: user.tenantId,
+      tenantName: user.tenant?.name ?? null,
+    };
+  }
+
   async createUser(
     tenantId: string,
     email: string,

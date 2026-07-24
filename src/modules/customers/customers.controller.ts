@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Param, Body, UseGuards } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiQuery } from "@nestjs/swagger";
+import { SkipThrottle } from "@nestjs/throttler";
 import { CustomersService } from "./customers.service";
 import { IsString, IsOptional, IsArray } from "class-validator";
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
@@ -44,6 +45,17 @@ export class CreateCustomerDto {
 @ApiTags("Customers")
 @Controller("customers")
 @UseGuards(JwtAuthGuard, TenantGuard)
+@SkipThrottle({
+  default: true,
+  short: true,
+  login: true,
+  refresh: true,
+  certificados: true,
+  retry: true,
+  descargas: true,
+  auditoria: true,
+  facturas: true,
+})
 export class CustomersController {
   constructor(private readonly service: CustomersService) {}
 

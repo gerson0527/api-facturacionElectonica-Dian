@@ -3,6 +3,8 @@ import { ConfigService } from "@nestjs/config";
 import { CufeService } from "./cufe.service";
 import { XmlBuilderService } from "./xml-builder.service";
 
+import { CatalogsService } from "../modules/catalogs/catalogs.service";
+
 describe("XmlBuilderService", () => {
   let service: XmlBuilderService;
 
@@ -17,6 +19,13 @@ describe("XmlBuilderService", () => {
               if (key === "XSD_PATH") return "./xsd";
               return undefined;
             },
+          },
+        },
+        {
+          provide: CatalogsService,
+          useValue: {
+            getItemByCode: jest.fn().mockReturnValue(null),
+            getItemName: jest.fn().mockReturnValue("IVA"),
           },
         },
       ],

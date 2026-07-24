@@ -40,6 +40,12 @@ export class Invoice extends TenantEntity {
   @Column({ type: "uuid", name: "customer_id", nullable: true })
   customerId: string;
 
+  @Column({ type: "uuid", name: "cash_register_id", nullable: true })
+  cashRegisterId: string;
+
+  @Column({ type: "uuid", name: "cash_session_id", nullable: true })
+  cashSessionId: string;
+
   @Column({ type: "varchar", length: 300, name: "customer_name" })
   customerName: string;
 
